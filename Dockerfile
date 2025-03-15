@@ -28,6 +28,9 @@ COPY . /app/
 RUN chmod +x /app/start.sh
 RUN chmod +x /app/db/init-db.sh
 
+# Create directory for Chroma DB and set permissions
+RUN mkdir -p /app/chroma_db && chmod 777 /app/chroma_db
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV POSTGRES_PASSWORD=postgres

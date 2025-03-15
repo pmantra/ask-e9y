@@ -1,6 +1,6 @@
 """Response models for the API."""
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from uuid import UUID
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -29,6 +29,7 @@ class QueryDetails(BaseModel):
     )
 
 
+# Update the QueryResponse class
 class QueryResponse(BaseModel):
     """Response model for a natural language query."""
 
@@ -56,7 +57,7 @@ class QueryResponse(BaseModel):
         default_factory=datetime.now,
         description="Timestamp of the response"
     )
-    timing_stats: Optional[Dict[str, float]] = Field(
+    timing_stats: Optional[Dict[str, Union[float, str]]] = Field(
         default=None,
         description="Timing statistics for different parts of the query processing (in milliseconds)"
     )

@@ -32,39 +32,30 @@ class OpenAILLMService(LLMService):
     ) -> Tuple[str, str]:
         """
         Translate a natural language query to SQL using OpenAI.
-
-        Args:
-            query: The natural language query
-            schema_info: Database schema information
-            conversation_id: Optional conversation context ID
-
-        Returns:
-            Tuple containing:
-            - The generated SQL query
-            - A natural language explanation of what the query does
         """
         # Prepare schema information as a string for the prompt
         schema_str = self._format_schema_for_prompt(schema_info)
 
         # Create the system prompt
         system_prompt = f"""You are an expert SQL assistant that generates PostgreSQL SQL queries.
-You are given a database schema and a natural language query. Your task is to convert the natural language into a valid SQL query.
+    You are given a database schema and a natural language query. Your task is to convert the natural language into a valid SQL query.
 
-Here's the database schema you're working with:
-{schema_str}
+    Here's the database schema you're working with:
+    {schema_str}
 
-Important concepts to understand about this schema:
-1. A member is considered "active" if the current date is contained within their effective_range. Use the PostgreSQL operator '@>' to check this: WHERE effective_range @> CURRENT_DATE
-2. Organizations are identified by the organization table, with a name column that can be searched using ILIKE.
-3. All tables are in the 'eligibility' schema, so always prefix table names with 'eligibility.'
-4. Never use a 'status' column for members as it doesn't exist. Always use the effective_range to determine if a member is active.
-5. For date operations, use PostgreSQL date functions like CURRENT_DATE.
+    Important concepts to understand about this schema:
+    1. A member is considered "active" if the current date is contained within their effective_range. Use the PostgreSQL operator '@>' to check this: WHERE effective_range @> CURRENT_DATE
+    2. Organizations are identified by the organization table, with a name column that can be searched using ILIKE.
+    3. All tables are in the 'eligibility' schema, so always prefix table names with 'eligibility.'
+    4. Never use a 'status' column for members as it doesn't exist. Always use the effective_range to determine if a member is active.
+    5. For date operations, use PostgreSQL date functions like CURRENT_DATE.
+    6. A person is considered "overeligible" if they have active member records in more than one organization with the same first name, last name, and date of birth. To check for overeligibility, look for members with identical first_name, last_name, and date_of_birth values that exist in multiple organizations.
 
-Generate ONLY SQL queries that query data, specifically SELECT statements. Do not generate queries that modify data.
-Ensure your SQL is valid PostgreSQL syntax.
-All table names should be prefixed with the schema name, e.g., 'eligibility.member'.
-Return only the SQL query as plain text, with no markdown formatting or explanations.
-"""
+    Generate ONLY SQL queries that query data, specifically SELECT statements. Do not generate queries that modify data.
+    Ensure your SQL is valid PostgreSQL syntax.
+    All table names should be prefixed with the schema name, e.g., 'eligibility.member'.
+    Return only the SQL query as plain text, with no markdown formatting or explanations.
+    """
 
         start_time = time.time()
         try:
@@ -345,6 +336,7 @@ Please help debug this error.
         schema_str += "1. Check if a member is active: member.effective_range @> CURRENT_DATE\n"
         schema_str += "2. Find members by organization name: member.organization_id = (SELECT id FROM eligibility.organization WHERE name ILIKE '%Organization Name%')\n"
         schema_str += "3. Count active members: COUNT(*) FROM eligibility.member WHERE effective_range @> CURRENT_DATE\n"
+        schema_str += "4. Check for overeligibility: SELECT COUNT(DISTINCT organization_id) > 1 FROM eligibility.member WHERE first_name = 'John' AND last_name = 'Smith' AND date_of_birth = '1980-01-01' AND effective_range @> CURRENT_DATE\n"
 
         return schema_str
 

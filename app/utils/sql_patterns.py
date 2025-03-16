@@ -19,6 +19,49 @@ SQL_PATTERNS = {
     "born_after": "m.date_of_birth > :date",
     "born_before": "m.date_of_birth < :date",
     "born_between": "m.date_of_birth BETWEEN :start_date AND :end_date",
+
+    # Patterns related to overeligibility
+    "overeligible_check": """
+        SELECT COUNT(DISTINCT organization_id) > 1 as is_overeligible 
+        FROM eligibility.member 
+        WHERE first_name = :first_name 
+        AND last_name = :last_name 
+        AND date_of_birth = :date_of_birth
+        AND effective_range @> CURRENT_DATE
+    """,
+
+    "list_overeligible": """
+        SELECT 
+            m.first_name, 
+            m.last_name, 
+            m.date_of_birth, 
+            COUNT(DISTINCT m.organization_id) as org_count,
+            array_agg(DISTINCT o.name) as organizations
+        FROM 
+            eligibility.member m
+        JOIN
+            eligibility.organization o ON m.organization_id = o.id
+        WHERE 
+            m.effective_range @> CURRENT_DATE
+        GROUP BY 
+            m.first_name, m.last_name, m.date_of_birth
+        HAVING 
+            COUNT(DISTINCT m.organization_id) > 1
+    """,
+
+    "member_organizations": """
+        SELECT 
+            o.name as organization_name,
+            m.effective_range
+        FROM 
+            eligibility.member m
+        JOIN
+            eligibility.organization o ON m.organization_id = o.id
+        WHERE 
+            m.first_name = :first_name
+            AND m.last_name = :last_name
+            AND m.date_of_birth = :date_of_birth
+    """
 }
 
 

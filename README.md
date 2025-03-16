@@ -76,6 +76,9 @@ ask-e9y/
 - "Show me all members from ACME Corporation"
 - "List the verification status of all members" 
 - "How many members are there per organization?"
+- "Show me all overeligible members"
+- "Is John Smith overeligible?"
+- "Check if member with ID 12345 is overeligible"
 
 ## License
 

@@ -61,6 +61,11 @@ class QueryResponse(BaseModel):
         default=None,
         description="Timing statistics for different parts of the query processing (in milliseconds)"
     )
+    has_results: bool = Field(
+        ...,
+        description="Whether the query returned any results"
+    )
+
 
 
 class ErrorDetail(BaseModel):

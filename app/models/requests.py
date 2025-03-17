@@ -28,10 +28,24 @@ class QueryRequest(BaseModel):
         default=True,
         description="Whether to include the generated SQL in the response"
     )
+    include_explanation: Optional[bool] = Field(
+        default=False,
+        description="Whether to generate explanation for the results in the initial response"
+    )
     parameters: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Optional parameters to pass to the query"
     )
+
+    @field_validator('query')
+    @classmethod
+    def validate_query(cls, v):
+        """Validate the query string."""
+        if not v or v.strip() == "":
+            raise ValueError("Query cannot be empty")
+        if len(v) > 1000:
+            raise ValueError("Query is too long (max 1000 characters)")
+        return v
 
     @field_validator('query')
     @classmethod

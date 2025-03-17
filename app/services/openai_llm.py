@@ -178,14 +178,20 @@ If the query is valid, return an empty errors array.
             query: str,
             sql: str,
             results: List[Dict[str, Any]],
+            tables_used: Optional[List[str]] = None,
+            business_rules: Optional[List[str]] = None,
+            schema_info: Optional[Dict[str, Any]] = None
     ) -> str:
         """
-        Generate a natural language explanation of query results.
+        Generate an educational natural language explanation of query results.
 
         Args:
             query: The original natural language query
             sql: The executed SQL query
             results: The query results
+            tables_used: List of tables used in the query (optional)
+            business_rules: List of business rules applied (optional)
+            schema_info: Database schema information (optional)
 
         Returns:
             A natural language explanation of the results
@@ -195,9 +201,38 @@ If the query is valid, return an empty errors array.
         results_str = json.dumps(results_sample, default=str, indent=2)
         total_rows = len(results)
 
-        system_prompt = """You are an expert data analyst that explains SQL query results in natural language.
-Your explanation should be clear, concise, and informative for a non-technical user.
-Focus on the important patterns or insights in the data rather than simply listing all values.
+        # If no tables_used provided, try to extract them
+        if not tables_used:
+            tables_used = self._extract_tables_from_sql(sql)
+
+        # Format tables info if schema_info is provided
+        tables_info = ""
+        if schema_info and tables_used:
+            tables_info = "Tables used in this query:\n"
+            for table_name in tables_used:
+                # Remove schema prefix if present
+                clean_table = table_name.replace("eligibility.", "")
+                if clean_table in schema_info:
+                    table_info = schema_info[clean_table]
+                    tables_info += f"- {table_name}: Contains "
+                    tables_info += ", ".join([col["name"] for col in table_info.get("columns", [])[:5]])
+                    tables_info += " and other fields\n"
+
+        # Create an educational system prompt
+        system_prompt = """You are an expert data educator who helps users understand database queries.
+Your goal is to help users who may not understand the database structure or business rules.
+
+For each query, explain:
+1. The data organization (which tables were used and why)
+2. The business rules and domain concepts applied (like what makes a member "active" or "overeligible")
+3. How the natural language was interpreted and translated to SQL
+
+Specific business rules to explain when relevant:
+- Active members: A member is considered active when the current date is within their effective_range.
+- Overeligibility: A person is overeligible if they have active member records in more than one organization with the same identity details.
+- Verification status: Members can be verified through various methods, stored in the verification table.
+
+Focus on being educational rather than just describing results. Help users understand the "why" behind the data.
 """
 
         start_time = time.time()
@@ -210,13 +245,21 @@ Focus on the important patterns or insights in the data rather than simply listi
 Original question: {query}
 SQL query: {sql}
 Total results: {total_rows}
+{tables_info}
+Business concepts applied: {', '.join(business_rules) if business_rules else 'None specifically detected'}
 Sample results: {results_str}
 
-Please explain these results in natural language.
+Please provide an educational explanation that helps the user understand:
+1. What data was queried and from where
+2. What the results mean in business terms
+3. Any business rules that were applied
+4. How their natural language query was interpreted
+
+Make your explanation helpful for someone who doesn't understand the database structure.
 """}
                 ],
                 temperature=0.7,
-                max_tokens=400,
+                max_tokens=500,  # Allow longer explanations for educational content
             )
 
             api_duration = time.time() - start_time
@@ -227,10 +270,33 @@ Please explain these results in natural language.
         except Exception as e:
             api_duration = time.time() - start_time
             logger.error(f"Error generating results explanation (after {api_duration:.2f} seconds): {str(e)}")
-            if results:
-                return f"Query returned {len(results)} results."
+
+            # Fallback explanation
+            if not results:
+                return f"Your query did not return any results. This might be because no data matches your search criteria. The query searched in the following tables: {', '.join(tables_used) if tables_used else 'the database'}."
             else:
-                return "Query did not return any results."
+                return f"Query returned {len(results)} results. This data comes from {', '.join(tables_used) if tables_used else 'the database'}."
+
+    def _extract_tables_from_sql(self, sql: str) -> List[str]:
+        """Extract table names from SQL query."""
+        # Simple regex-based extraction
+        # This is a simplified approach - a proper SQL parser would be more robust
+        from_pattern = r'FROM\s+([a-zA-Z0-9_.]+)'
+        join_pattern = r'JOIN\s+([a-zA-Z0-9_.]+)'
+
+        tables = []
+
+        # Find tables in FROM clauses
+        from_matches = re.finditer(from_pattern, sql, re.IGNORECASE)
+        for match in from_matches:
+            tables.append(match.group(1).strip())
+
+        # Find tables in JOIN clauses
+        join_matches = re.finditer(join_pattern, sql, re.IGNORECASE)
+        for match in join_matches:
+            tables.append(match.group(1).strip())
+
+        return list(set(tables))  # Remove duplicates
 
     async def handle_error(
         self,

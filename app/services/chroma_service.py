@@ -65,13 +65,15 @@ class ChromaService:
             query_text: str,
             embedding: List[float],
             sql: str,
-            explanation: str,
-            execution_time_ms: float
+            explanation: Optional[str],
+            execution_time_ms: float,
+            query_id: Optional[str] = None
     ) -> bool:
         """Store a query in the vector database."""
         try:
-            # Generate query ID
-            query_id = self.get_query_id(query_text)
+            # Generate query ID if not provided
+            if not query_id:
+                query_id = self.get_query_id(query_text)
 
             # Store metadata with the embedding
             metadata = {
@@ -80,7 +82,8 @@ class ChromaService:
                 "explanation": explanation,
                 "execution_time_ms": execution_time_ms,
                 "usage_count": 1,
-                "last_used_timestamp": self._get_current_timestamp()
+                "last_used_timestamp": self._get_current_timestamp(),
+                "query_id": query_id  # Store the query ID in metadata
             }
 
             # Upsert the document
@@ -124,6 +127,79 @@ class ChromaService:
             return False
         except Exception as e:
             logger.error(f"Error updating usage in Chroma: {str(e)}")
+            return False
+
+    async def get_query_by_id(self, query_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve a query by its ID."""
+        try:
+            # Query collection by ID
+            results = self.collection.get(
+                ids=[query_id],
+                include=["metadatas"]
+            )
+
+            if results["metadatas"] and len(results["metadatas"]) > 0:
+                return results["metadatas"][0]
+
+            # If not found by direct ID, try searching through metadata
+            # This handles the case where query_id is stored in metadata
+            # but not used as the document ID
+            all_entries = self.collection.get(
+                include=["metadatas", "documents", "embeddings"]
+            )
+
+            for i, metadata in enumerate(all_entries["metadatas"]):
+                if metadata.get("query_id") == query_id:
+                    return metadata
+
+            return None
+        except Exception as e:
+            logger.error(f"Error retrieving query by ID: {str(e)}")
+            return None
+
+    async def update_explanation(self, query_id: str, explanation: str) -> bool:
+        """Update the explanation for a query."""
+        try:
+            # Get current metadata
+            results = self.collection.get(
+                ids=[query_id],
+                include=["metadatas"]
+            )
+
+            if results["metadatas"] and len(results["metadatas"]) > 0:
+                metadata = results["metadatas"][0]
+
+                # Update explanation
+                metadata["explanation"] = explanation
+
+                # Update metadata
+                self.collection.update(
+                    ids=[query_id],
+                    metadatas=[metadata]
+                )
+
+                return True
+
+            # If not found by direct ID, try searching through metadata
+            all_entries = self.collection.get(
+                include=["metadatas", "documents", "embeddings"]
+            )
+
+            for i, metadata in enumerate(all_entries["metadatas"]):
+                if metadata.get("query_id") == query_id:
+                    doc_id = all_entries["ids"][i]
+                    metadata["explanation"] = explanation
+
+                    self.collection.update(
+                        ids=[doc_id],
+                        metadatas=[metadata]
+                    )
+
+                    return True
+
+            return False
+        except Exception as e:
+            logger.error(f"Error updating explanation: {str(e)}")
             return False
 
     def _get_current_timestamp(self) -> int:

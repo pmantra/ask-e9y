@@ -2,6 +2,10 @@
 
 import logging
 import json
+import uuid
+from datetime import datetime
+from typing import Dict, Any
+
 from fastapi import APIRouter, Depends, status, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -146,6 +150,78 @@ async def get_schema(
 
     # Sanitize response and return custom JSON
     response_dict = sanitize_for_json(response.dict())
+
+    return Response(
+        content=json.dumps(response_dict),
+        media_type="application/json"
+    )
+
+
+@router.post("/explain",
+             response_model=None,
+             responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}}
+             )
+async def get_explanation(
+        request: Dict[str, Any],
+        db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Get explanation for a previously executed query.
+
+    Parameters:
+    - **query_id**: ID of the query to explain
+
+    Returns:
+    - **ExplanationResponse**: The explanation and metadata
+    """
+    if "query_id" not in request:
+        return Response(
+            content=json.dumps({
+                "detail": {
+                    "error": "Missing query_id",
+                    "message": "The query_id is required to retrieve an explanation"
+                }
+            }),
+            status_code=status.HTTP_400_BAD_REQUEST,
+            media_type="application/json"
+        )
+
+    try:
+        query_id = uuid.UUID(request["query_id"])
+    except (ValueError, TypeError):
+        return Response(
+            content=json.dumps({
+                "detail": {
+                    "error": "Invalid query_id format",
+                    "message": "The query_id must be a valid UUID"
+                }
+            }),
+            status_code=status.HTTP_400_BAD_REQUEST,
+            media_type="application/json"
+        )
+
+    logger.info(f"Generating explanation for query {query_id}")
+
+    explanation = await query_service.get_explanation(query_id, db)
+
+    if not explanation or explanation.startswith("Could not generate explanation"):
+        return Response(
+            content=json.dumps({
+                "detail": {
+                    "error": "Explanation not found",
+                    "message": "No query found with the provided ID, or the explanation could not be generated"
+                }
+            }),
+            status_code=status.HTTP_404_NOT_FOUND,
+            media_type="application/json"
+        )
+
+    # Return the explanation
+    response_dict = {
+        "query_id": str(query_id),
+        "explanation": explanation,
+        "timestamp": datetime.now().isoformat()
+    }
 
     return Response(
         content=json.dumps(response_dict),

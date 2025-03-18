@@ -80,6 +80,37 @@ ask-e9y/
 - "Is John Smith overeligible?"
 - "Check if member with ID 12345 is overeligible"
 
+# How Ask E9Y Works
+
+## User Input to Database Results Flow
+
+1. **Input Reception**:  
+   System receives natural language query through `/api/query` endpoint.
+
+2. **Cache Check**:  
+   Checks for identical or semantically similar queries in PostgreSQL and ChromaDB.
+
+3. **LLM Translation**:  
+   If no cache hit, sends query with database schema to OpenAI to generate SQL.
+
+4. **SQL Validation**:  
+   Validates generated SQL for safety, syntax, and schema correctness.
+
+5. **Execution**:  
+   Runs validated SQL against PostgreSQL database using SQLAlchemy.
+
+6. **Explanation**:  
+   Optionally generates natural language explanation of the results.
+
+7. **Caching**:  
+   Stores query, SQL, and results for future use.
+
+8. **Response**:  
+   Returns results, SQL, execution statistics, and explanation to the user.
+
+The system combines traditional caching, vector similarity search, and LLM capabilities to efficiently translate natural language to SQL while preventing harmful operations.
+
+
 ## License
 
 This project is licensed under the MIT License.

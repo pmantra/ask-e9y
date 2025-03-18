@@ -26,19 +26,25 @@ class ChromaService:
         """Generate a consistent ID for a query."""
         return hashlib.md5(query_text.encode()).hexdigest()
 
+    # In app/services/chroma_service.py
+
     async def find_similar_query(
             self,
             embedding: List[float],
-            similarity_threshold: float = 0.92
+            similarity_threshold: float = 0.85
     ) -> Optional[Dict[str, Any]]:
         """Find a similar query using vector similarity."""
         try:
+            logger.debug(f"Searching for similar queries with threshold: {similarity_threshold}")
             # Query the collection
             results = self.collection.query(
                 query_embeddings=[embedding],
                 n_results=1,
                 include=["metadatas", "distances"]
             )
+
+            # Log detailed results
+            logger.debug(f"Chroma search results: {results}")
 
             # Check if we have results and if the similarity is high enough
             if (results["metadatas"] and
@@ -51,13 +57,17 @@ class ChromaService:
                 # Convert distance to similarity (Chroma returns distance, not similarity)
                 distance = results["distances"][0][0]
                 similarity = 1 - distance
+                logger.debug(f"Best match similarity: {similarity} (distance: {distance})")
 
                 if similarity >= similarity_threshold:
+                    logger.info(f"Found similar query with similarity: {similarity}")
                     return results["metadatas"][0][0]
+                else:
+                    logger.debug(f"Best match similarity {similarity} below threshold {similarity_threshold}")
 
             return None
         except Exception as e:
-            logger.error(f"Error in Chroma similarity search: {str(e)}")
+            logger.error(f"Error in Chroma similarity search: {str(e)}", exc_info=True)
             return None
 
     async def store_query(
@@ -79,7 +89,7 @@ class ChromaService:
             metadata = {
                 "natural_query": query_text,
                 "generated_sql": sql,
-                "explanation": explanation,
+                "explanation": explanation or "",  # Convert None to empty string
                 "execution_time_ms": execution_time_ms,
                 "usage_count": 1,
                 "last_used_timestamp": self._get_current_timestamp(),

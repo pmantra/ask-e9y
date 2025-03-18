@@ -36,6 +36,8 @@ class EmbeddingService:
 
     def normalize_query(self, query: str) -> str:
         """Normalize query text for better matching."""
+        original = query
         # Simple normalization - lowercase, remove excess whitespace
         normalized = " ".join(query.lower().split())
+        logger.debug(f"Query normalization: '{original}' -> '{normalized}'")
         return normalized

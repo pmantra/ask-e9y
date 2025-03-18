@@ -74,6 +74,8 @@ class QueryService:
 
             # Normalize the query
             normalized_query = self._embedding_service.normalize_query(request.query)
+            logger.debug(f"Original query: '{request.query}'")
+            logger.debug(f"Normalized query: '{normalized_query}'")
             sql = None
             explanation = None
             query_id = uuid.uuid4()
@@ -91,11 +93,14 @@ class QueryService:
                     WHERE natural_query = :query
                 """)
 
+                logger.debug(f"Executing PostgreSQL cache lookup with: '{normalized_query}'")
+
                 try:
                     result = await db.execute(exact_query, {"query": normalized_query})
                     cache_hit = result.mappings().first()
 
                     if cache_hit:
+                        logger.info(f"Cache hit! Query: '{normalized_query[:50]}...'")
                         sql = cache_hit["generated_sql"]
                         if include_explanation:
                             explanation = cache_hit["explanation"]
@@ -123,14 +128,20 @@ class QueryService:
                 if not sql:
                     # Generate embedding
                     embedding_start = time.time()
+                    logger.debug("Generating embedding for vector search")
                     embedding = await self._embedding_service.get_embedding(request.query)
                     timing_stats["embedding_time"] = time.time() - embedding_start
+                    logger.debug(f"Embedding generation took {timing_stats["embedding_time"]:.2f}s")
 
                     if embedding:
                         # Query Chroma for similar vectors
+                        logger.debug("Searching for similar queries in Chroma")
                         similar_query = await self._chroma_service.find_similar_query(embedding)
 
                         if similar_query:
+                            logger.info(
+                                f"Vector similarity hit! Similarity score: {similar_query.get('similarity', 'unknown')}")
+                            logger.debug(f"Found similar query: '{similar_query.get('natural_query', '')[:50]}...'")
                             sql = similar_query["generated_sql"]
                             if include_explanation:
                                 explanation = similar_query["explanation"]
@@ -138,6 +149,8 @@ class QueryService:
 
                             # Update usage statistics in Chroma
                             await self._chroma_service.update_usage(normalized_query)
+                        else:
+                            logger.debug("No similar queries found in vector DB")
             except Exception as e:
                 logger.error(f"Error during cache lookup: {str(e)}")
 
@@ -253,7 +266,8 @@ class QueryService:
             embedding = await self._embedding_service.get_embedding(request.query)
             if embedding:
                 # Store in Chroma - still store explanation if we have it
-                await self._chroma_service.store_query(
+                logger.debug(f"Storing query in Chroma: '{normalized_query[:50]}...'")
+                chroma_result = await self._chroma_service.store_query(
                     normalized_query,
                     embedding,
                     sql,
@@ -261,9 +275,11 @@ class QueryService:
                     timing_stats["execution_time"] * 1000,
                     query_id=str(query_id)  # Store query_id for later retrieval
                 )
+                logger.debug(f"Chroma storage result: {chroma_result}")
 
                 # Try storing in PostgreSQL too (if available)
                 try:
+                    logger.debug(f"Storing query in PostgreSQL: '{normalized_query[:50]}...'")
                     store_query = text("""
                         INSERT INTO eligibility.query_cache 
                             (natural_query, generated_sql, explanation, execution_time_ms, query_id)
@@ -277,17 +293,18 @@ class QueryService:
                             last_used = CURRENT_TIMESTAMP
                     """)
 
-                    await db.execute(
-                        store_query,
-                        {
-                            "query": normalized_query,
-                            "sql": sql,
-                            "explanation": explanation or results_explanation if include_explanation else None,
-                            "time": timing_stats["execution_time"] * 1000,
-                            "query_id": str(query_id)
-                        }
-                    )
+                    params = {
+                        "query": normalized_query,
+                        "sql": sql,
+                        "explanation": explanation or results_explanation if include_explanation else None,
+                        "time": timing_stats["execution_time"] * 1000,
+                        "query_id": str(query_id)
+                    }
+                    logger.debug(f"SQL parameters: {params}")
+
+                    await db.execute(store_query, params)
                     await db.commit()
+                    logger.info(f"Successfully stored query in PostgreSQL cache")
                 except Exception as e:
                     logger.warning(f"Failed to store in PostgreSQL: {str(e)}")
 

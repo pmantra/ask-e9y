@@ -3,7 +3,6 @@
 from typing import Optional, List, Dict, Any
 from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, field_validator
-from datetime import datetime
 
 
 class QueryRequest(BaseModel):
@@ -36,16 +35,6 @@ class QueryRequest(BaseModel):
         default=None,
         description="Optional parameters to pass to the query"
     )
-
-    @field_validator('query')
-    @classmethod
-    def validate_query(cls, v):
-        """Validate the query string."""
-        if not v or v.strip() == "":
-            raise ValueError("Query cannot be empty")
-        if len(v) > 1000:
-            raise ValueError("Query is too long (max 1000 characters)")
-        return v
 
     @field_validator('query')
     @classmethod

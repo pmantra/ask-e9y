@@ -1,5 +1,4 @@
-"""API routes for natural language queries."""
-
+# app/routers/query.py
 import logging
 import json
 import uuid
@@ -9,10 +8,13 @@ from typing import Dict, Any
 from fastapi import APIRouter, Depends, status, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_async_db, get_table_schema_info
+from app.database import get_async_db
 from app.models.requests import QueryRequest, FeedbackRequest, SchemaRequest
-from app.models.responses import ErrorResponse, FeedbackResponse, SchemaInfo
-from app.services.query_service import QueryService
+from app.models.responses import ErrorResponse, FeedbackResponse, SchemaInfo, QueryResponse
+from app.services.explanation_service import ExplanationService
+from app.services.feedback_service import FeedbackService
+from app.services.orchestration.factory import query_orchestrator
+from app.services.schema_info_service import SchemaInfoService
 from app.utils.db_utils import sanitize_for_json
 
 logger = logging.getLogger(__name__)
@@ -22,8 +24,13 @@ router = APIRouter(
     tags=["Query"]
 )
 
-# Initialize the query service
-query_service = QueryService()
+feedback_service = FeedbackService()
+schema_info_service = SchemaInfoService()
+explanation_service = ExplanationService(
+    llm_service=query_orchestrator.sql_generation_stage.llm_service,
+    schema_service=query_orchestrator.sql_generation_stage.schema_service,
+    chroma_service=query_orchestrator.cache_lookup_stage.cache_service.chroma_service
+)
 
 
 @router.post("/query",
@@ -34,78 +41,87 @@ async def process_query(
     request: QueryRequest,
     db: AsyncSession = Depends(get_async_db)
 ):
-    """
-    Process a natural language query and return the results.
+    """Process a natural language query and return the results."""
+    request_id = str(uuid.uuid4())
+    logger.info(f"Processing query [ID: {request_id}]: {request.query}")
 
-    Parameters:
-    - **query**: The natural language query to process
-    - **conversation_id**: (Optional) Conversation context ID
-    - **max_results**: (Optional) Maximum number of results to return
-    - **include_sql**: (Optional) Whether to include the generated SQL in the response
+    # Process the query through the orchestrator
+    response = await query_orchestrator.process_query(request, db, request_id)
 
-    Returns:
-    - **QueryResponse**: The query results
-    """
-    logger.info(f"Processing query: {request.query}")
+    # Handle the response based on its type using pattern matching
+    match response:
+        case ErrorResponse():
+            # Sanitize error response to handle special types
+            error_dict = sanitize_for_json(response.dict())
 
-    response, error = await query_service.process_query(request, db)
-
-    if error:
-        # Sanitize error response to handle special types
-        error_dict = sanitize_for_json(error.dict())
-
-        if "validation" in error.error.lower():
-            status_code = status.HTTP_400_BAD_REQUEST
-        else:
+            # Determine appropriate status code
             status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            if "validation" in response.error.lower():
+                status_code = status.HTTP_400_BAD_REQUEST
 
-        # Return custom JSON response
-        return Response(
-            content=json.dumps({"detail": error_dict}),
-            status_code=status_code,
-            media_type="application/json"
-        )
+            # Log completion with error
+            logger.info(f"Query processing completed [ID: {request_id}] with error: {response.error}")
 
-    # Sanitize successful response to handle special types
-    response_dict = sanitize_for_json(response.dict())
+            # Return error response
+            return Response(
+                content=json.dumps({"detail": error_dict}),
+                status_code=status_code,
+                media_type="application/json"
+            )
 
-    # Return custom JSON response
-    return Response(
-        content=json.dumps(response_dict),
-        media_type="application/json"
-    )
+        case QueryResponse():
+            # Sanitize successful response
+            response_dict = sanitize_for_json(response.dict())
+
+            # Log successful completion
+            logger.info(
+                f"Query processing completed [ID: {request_id}] successfully, returning {len(response.results)} results")
+
+            # Return success response
+            return Response(
+                content=json.dumps(response_dict),
+                media_type="application/json"
+            )
+
+        case _:
+            # Unexpected response type (shouldn't happen but good defensive programming)
+            logger.error(f"Query processing returned unexpected type: {type(response)}")
+            return Response(
+                content=json.dumps({"detail": "Internal server error: unexpected response type"}),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                media_type="application/json"
+            )
 
 
 @router.post("/feedback", response_model=None)
 async def submit_feedback(
-    request: FeedbackRequest,
-    db: AsyncSession = Depends(get_async_db)
+        request: FeedbackRequest,
+        db: AsyncSession = Depends(get_async_db)
 ):
-    """
-    Submit feedback on a query result.
+    """Submit feedback on a query result."""
+    request_id = str(uuid.uuid4())
+    logger.info(f"Received feedback [ID: {request_id}] for query {request.query_id}: {request.is_accurate}")
 
-    Parameters:
-    - **query_id**: ID of the previous query
-    - **is_accurate**: Whether the query results were accurate
-    - **comments**: (Optional) Feedback comments
-    - **corrected_sql**: (Optional) Corrected SQL if the generated SQL was inaccurate
+    # Process feedback through the service
+    result = await feedback_service.submit_feedback(
+        query_id=request.query_id,
+        is_accurate=request.is_accurate,
+        comments=request.comments,
+        corrected_sql=request.corrected_sql,
+        db_session=db
+    )
 
-    Returns:
-    - **FeedbackResponse**: Confirmation of feedback submission
-    """
-    logger.info(f"Received feedback for query {request.query_id}: {request.is_accurate}")
-
-    # In a real implementation, this would store the feedback in a database
-    # For now, we just log it and return a success response
-
+    # Create response
     response = FeedbackResponse(
-        status="success",
-        message="Thank you for your feedback",
+        status=result["status"],
+        message=result["message"],
         query_id=request.query_id
     )
 
-    # Sanitize response and return custom JSON
+    # Sanitize and return
     response_dict = sanitize_for_json(response.dict())
+
+    logger.info(f"Feedback processing completed [ID: {request_id}]")
 
     return Response(
         content=json.dumps(response_dict),
@@ -115,41 +131,30 @@ async def submit_feedback(
 
 @router.post("/schema", response_model=None)
 async def get_schema(
-    request: SchemaRequest,
-    db: AsyncSession = Depends(get_async_db)
+        request: SchemaRequest,
+        db: AsyncSession = Depends(get_async_db)
 ):
-    """
-    Get database schema information.
+    """Get database schema information."""
+    request_id = str(uuid.uuid4())
+    logger.info(f"Getting schema information [ID: {request_id}] for {request.schema_name}")
 
-    Parameters:
-    - **schema_name**: (Optional) Database schema name
-    - **include_metadata**: (Optional) Whether to include schema metadata
-    - **tables**: (Optional) Specific tables to include
-
-    Returns:
-    - **SchemaInfo**: Schema information including tables, columns, and relationships
-    """
-    logger.info(f"Getting schema information for {request.schema_name}")
-
-    schema_info = await get_table_schema_info(request.schema_name)
-
-    # If specific tables were requested, filter the schema info
-    if request.tables:
-        schema_info = {
-            table: info
-            for table, info in schema_info.items()
-            if table in request.tables
-        }
-
-    # TODO: Add metadata from the schema_metadata table if include_metadata is True
-
-    response = SchemaInfo(
-        tables=schema_info,
-        metadata=None,  # For now, this is null; would be populated in a real implementation
+    # Get schema through the service
+    schema_result = await schema_info_service.get_schema_info(
+        schema_name=request.schema_name,
+        tables=request.tables,
+        include_metadata=request.include_metadata
     )
 
-    # Sanitize response and return custom JSON
+    # Create response
+    response = SchemaInfo(
+        tables=schema_result["tables"],
+        metadata=schema_result["metadata"]
+    )
+
+    # Sanitize and return
     response_dict = sanitize_for_json(response.dict())
+
+    logger.info(f"Schema retrieval completed [ID: {request_id}]")
 
     return Response(
         content=json.dumps(response_dict),
@@ -165,16 +170,12 @@ async def get_explanation(
         request: Dict[str, Any],
         db: AsyncSession = Depends(get_async_db)
 ):
-    """
-    Get explanation for a previously executed query.
+    """Get explanation for a previously executed query."""
+    request_id = str(uuid.uuid4())
 
-    Parameters:
-    - **query_id**: ID of the query to explain
-
-    Returns:
-    - **ExplanationResponse**: The explanation and metadata
-    """
+    # Validate request
     if "query_id" not in request:
+        logger.warning(f"Explanation request [ID: {request_id}] missing query_id")
         return Response(
             content=json.dumps({
                 "detail": {
@@ -189,6 +190,7 @@ async def get_explanation(
     try:
         query_id = uuid.UUID(request["query_id"])
     except (ValueError, TypeError):
+        logger.warning(f"Explanation request [ID: {request_id}] had invalid query_id format")
         return Response(
             content=json.dumps({
                 "detail": {
@@ -200,11 +202,13 @@ async def get_explanation(
             media_type="application/json"
         )
 
-    logger.info(f"Generating explanation for query {query_id}")
+    logger.info(f"Generating explanation [ID: {request_id}] for query {query_id}")
 
-    explanation = await query_service.get_explanation(query_id, db)
+    # Get explanation through service
+    explanation = await explanation_service.get_explanation(query_id, db)
 
     if not explanation or explanation.startswith("Could not generate explanation"):
+        logger.warning(f"Explanation not found [ID: {request_id}] for query {query_id}")
         return Response(
             content=json.dumps({
                 "detail": {
@@ -216,12 +220,15 @@ async def get_explanation(
             media_type="application/json"
         )
 
-    # Return the explanation
+    # Create response
     response_dict = {
         "query_id": str(query_id),
         "explanation": explanation,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "request_id": request_id
     }
+
+    logger.info(f"Explanation generation completed [ID: {request_id}] for query {query_id}")
 
     return Response(
         content=json.dumps(response_dict),

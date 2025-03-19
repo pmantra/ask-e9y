@@ -29,7 +29,6 @@ class QueryDetails(BaseModel):
     )
 
 
-# Update the QueryResponse class
 class QueryResponse(BaseModel):
     """Response model for a natural language query."""
 
@@ -65,8 +64,7 @@ class QueryResponse(BaseModel):
         ...,
         description="Whether the query returned any results"
     )
-
-
+    request_id: Optional[str] = None
 
 class ErrorDetail(BaseModel):
     """Detailed error information."""

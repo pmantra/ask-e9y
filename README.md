@@ -110,6 +110,62 @@ ask-e9y/
 
 The system combines traditional caching, vector similarity search, and LLM capabilities to efficiently translate natural language to SQL while preventing harmful operations.
 
+## Architecture: Orchestrator Pattern
+
+Ask E9Y uses a structured orchestrator pattern that separates processing into discrete stages and services, providing clear responsibilities, better error handling, and the ability to optimize each component independently.
+
+### Core Services
+
+1. **SchemaService**:  
+   Retrieves and caches database schema information needed by the LLM to generate accurate SQL.
+
+2. **CacheService**:  
+   Manages query caching across PostgreSQL and ChromaDB vector storage for efficient retrieval of previously processed queries.
+
+3. **EmbeddingService**:  
+   Generates vector embeddings of natural language queries for semantic similarity search.
+
+4. **LLMService**:  
+   Handles communication with language models (OpenAI) for SQL generation and result explanation.
+
+5. **SQLExecutor**:  
+   Executes validated SQL against the database and returns structured results.
+
+6. **ExplanationService**:  
+   Retrieves or generates natural language explanations of query results.
+
+### Processing Stages
+
+Each query flows through these discrete stages, coordinated by the QueryOrchestrator:
+
+1. **CacheLookupStage**:  
+   Searches for matching queries in both exact-match and vector-similarity caches.
+
+2. **SQLGenerationStage**:  
+   Transforms natural language into SQL using the LLM with database schema context.
+
+3. **SQLValidationStage**:  
+   Ensures generated SQL is safe, syntactically correct, and compatible with the schema.
+
+4. **SQLExecutionStage**:  
+   Runs the SQL against the database and captures results and performance metrics.
+
+5. **ExplanationStage**:  
+   Generates human-readable explanations of query results in natural language.
+
+6. **CacheStorageStage**:  
+   Stores successful queries for future reuse in both traditional and vector caches.
+
+### Benefits of This Architecture
+
+- **Separation of Concerns**: Each component has a single responsibility
+- **Error Isolation**: Issues in one stage don't affect others
+- **Parallel Processing**: Independent stages can run concurrently
+- **Maintainability**: Components can be updated independently
+- **Testability**: Each stage can be tested in isolation
+- **Performance Visibility**: Clear metrics for each processing stage
+
+This architecture provides both flexibility and robustness, making the system easier to extend with new features like conversational context tracking, PII scrubbing, and business rule enforcement.
 
 ## License
 

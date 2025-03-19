@@ -139,7 +139,7 @@ class ChromaService:
             logger.error(f"Error updating usage in Chroma: {str(e)}")
             return False
 
-    async def get_query_by_id(self, query_id: str) -> Optional[Dict[str, Any]]:
+    def get_query_by_id(self, query_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve a query by its ID."""
         try:
             # Query collection by ID
@@ -152,8 +152,6 @@ class ChromaService:
                 return results["metadatas"][0]
 
             # If not found by direct ID, try searching through metadata
-            # This handles the case where query_id is stored in metadata
-            # but not used as the document ID
             all_entries = self.collection.get(
                 include=["metadatas", "documents", "embeddings"]
             )

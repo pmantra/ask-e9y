@@ -1,4 +1,5 @@
 import logging
+import sqlalchemy as sa
 from typing import Optional, Dict, Any
 from sqlalchemy import text
 from uuid import UUID
@@ -30,19 +31,35 @@ class ExplanationService:
         try:
             logger.info(f"Retrieving explanation for query {query_id}")
 
-            # Strategy 1: Check PostgreSQL cache
+            # Strategy 1: Direct lookup in PostgreSQL
             explanation = await self._get_from_postgres(query_id, db_session)
             if explanation:
                 logger.info(f"Found explanation in PostgreSQL for query {query_id}")
                 return explanation
 
-            # Strategy 2: Check Chroma vector store
+            # Strategy 2: Direct lookup in Chroma
             explanation = self._get_from_chroma(query_id)
             if explanation:
                 logger.info(f"Found explanation in Chroma for query {query_id}")
                 return explanation
 
-            # Strategy 3: Get query details and generate new explanation
+            # Strategy 3: Check if this is a mapped ID
+            original_id = await self._get_original_query_id(query_id, db_session)
+            if original_id:
+                logger.info(f"Found mapping to original query ID {original_id}")
+
+                # Try looking up with the original ID
+                explanation = await self._get_from_postgres(original_id, db_session)
+                if explanation:
+                    logger.info(f"Found explanation using original query ID {original_id}")
+                    return explanation
+
+                explanation = self._get_from_chroma(original_id)
+                if explanation:
+                    logger.info(f"Found explanation in Chroma using original query ID {original_id}")
+                    return explanation
+
+            # Strategy 4: Get query details and generate new explanation
             query_data = await self._get_query_details(query_id, db_session)
             if query_data:
                 logger.info(f"Generating new explanation for query {query_id}")
@@ -188,3 +205,23 @@ class ExplanationService:
                 logger.info(f"Stored explanation in Chroma for query {query_id}")
         except Exception as e:
             logger.warning(f"Failed to store explanation in Chroma: {str(e)}")
+
+    async def _get_original_query_id(self, query_id: UUID, db_session) -> Optional[str]:
+        """Get the original query ID if this is a cached query."""
+        try:
+            query = sa.text("""
+                SELECT original_query_id
+                FROM eligibility.query_id_mappings
+                WHERE new_query_id = :query_id
+            """)
+
+            result = await db_session.execute(query, {"query_id": str(query_id)})
+            row = result.mappings().first()
+
+            if row and row["original_query_id"]:
+                return row["original_query_id"]
+
+            return None
+        except Exception as e:
+            logger.warning(f"Error finding original query ID: {str(e)}")
+            return None

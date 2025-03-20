@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, field_validator
 
 
+# In app/models/requests.py
 class QueryRequest(BaseModel):
     """Request model for a natural language query."""
 
@@ -30,6 +31,10 @@ class QueryRequest(BaseModel):
     include_explanation: Optional[bool] = Field(
         default=False,
         description="Whether to generate explanation for the results in the initial response"
+    )
+    include_cached_explanation: Optional[bool] = Field(
+        default=False,
+        description="Whether to include explanations for cached results"
     )
     parameters: Optional[Dict[str, Any]] = Field(
         default=None,

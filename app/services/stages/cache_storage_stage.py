@@ -25,10 +25,15 @@ class CacheStorageStage:
 
         # Only store if we have an embedding
         stored = False
+        explanation = context.results_explanation
+
         if embedding:
             # Get explanation (if available)
             explanation = context.results_explanation
-
+            # Check if explanation is the default placeholder
+            if explanation == "Results found. Request an explanation to learn more about this data.":
+                # Replace with None to indicate no real explanation exists
+                explanation = None
             # Store in cache
             stored = await self.cache_service.store_query(
                 context.original_query,

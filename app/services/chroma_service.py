@@ -60,8 +60,11 @@ class ChromaService:
                 logger.debug(f"Best match similarity: {similarity} (distance: {distance})")
 
                 if similarity >= similarity_threshold:
+                    metadata = results["metadatas"][0][0]
+                    if "query_id" not in metadata and results["ids"] and len(results["ids"]) > 0:
+                        metadata["original_query_id"] = results["ids"][0][0]
                     logger.info(f"Found similar query with similarity: {similarity}")
-                    return results["metadatas"][0][0]
+                    return metadata
                 else:
                     logger.debug(f"Best match similarity {similarity} below threshold {similarity_threshold}")
 

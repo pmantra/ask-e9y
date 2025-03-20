@@ -206,6 +206,7 @@ async def get_explanation(
 
     # Get explanation through service
     explanation = await explanation_service.get_explanation(query_id, db)
+    logger.debug(f"Raw explanation content: '{explanation}'")
 
     if not explanation or explanation.startswith("Could not generate explanation"):
         logger.warning(f"Explanation not found [ID: {request_id}] for query {query_id}")

@@ -47,6 +47,7 @@ class QueryOrchestrator:
             request_id=request_id or str(uuid.uuid4()),
             metadata={
                 "include_explanation": request.include_explanation,
+                "include_cached_explanation": request.include_cached_explanation,
                 "max_results": request.max_results,
                 "include_sql": request.include_sql
             }
@@ -111,12 +112,22 @@ class QueryOrchestrator:
 
             # Stage 5: Generate explanation if needed
             needs_explanation = context.metadata.get("include_explanation", False) or not context.results
-            if needs_explanation:
+            include_cached_explanation = context.metadata.get("include_cached_explanation", False)
+
+            # Check if we already have an explanation from cache
+            has_cached_explanation = context.results_explanation is not None
+
+            if needs_explanation and not has_cached_explanation:
+                # Generate new explanation
                 await self.explanation_stage.execute(context, db_session)
                 logger.debug("Explanation generated")
+            elif has_cached_explanation and include_cached_explanation:
+                # We have a cached explanation and want to include it - do nothing, it's already set
+                logger.debug("Using cached explanation")
             else:
-                context.results_explanation = "Results found. Request an explanation to learn more about this data."
-                logger.debug("Skipped explanation generation")
+                # In all other cases, set explanation to None
+                context.results_explanation = None
+                logger.debug("Explanation not needed or not available")
 
             # Stage 6: Store in cache if new query
             if context.metadata.get("cache_status", "miss") == "miss":

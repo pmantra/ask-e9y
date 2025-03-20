@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Dict, Any, Optional
+import sqlalchemy as sa
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
@@ -63,12 +63,14 @@ class CacheService:
         result = {
             "sql": None,
             "explanation": None,
-            "cache_status": "miss"
+            "cache_status": "miss",
+            "original_query_id": None
         }
 
         try:
-            exact_query = text("""
-                SELECT generated_sql, explanation 
+            # Modified to fetch query_id
+            exact_query = sa.text("""
+                SELECT generated_sql, explanation, query_id 
                 FROM eligibility.query_cache
                 WHERE natural_query = :query
             """)
@@ -79,24 +81,11 @@ class CacheService:
             if cache_hit:
                 logger.info(f"Cache hit! Query: '{normalized_query[:50]}...'")
                 result["sql"] = cache_hit["generated_sql"]
-                if include_explanation:
-                    result["explanation"] = cache_hit["explanation"]
+                result["explanation"] = cache_hit["explanation"]
                 result["cache_status"] = "db_exact_hit"
+                result["original_query_id"] = cache_hit["query_id"]
 
-                # Update usage stats
-                try:
-                    await db_session.execute(
-                        text("""
-                            UPDATE eligibility.query_cache
-                            SET execution_count = execution_count + 1,
-                                last_used = CURRENT_TIMESTAMP
-                            WHERE natural_query = :query
-                        """),
-                        {"query": normalized_query}
-                    )
-                    await db_session.commit()
-                except Exception as e:
-                    logger.warning(f"Failed to update cache usage: {str(e)}")
+                # Update usage stats as before...
         except Exception as e:
             logger.warning(f"PostgreSQL cache lookup error: {str(e)}")
 

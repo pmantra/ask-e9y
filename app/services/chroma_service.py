@@ -5,15 +5,18 @@ import chromadb
 import hashlib
 from typing import List, Optional, Dict, Any, Union
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 
 class ChromaService:
     """Service for handling vector operations with Chroma DB."""
 
-    def __init__(self, persist_directory="./chroma_db"):
+    def __init__(self, persist_directory=None):
         """Initialize the Chroma client."""
-        self.client = chromadb.PersistentClient(path=persist_directory)
+        persist_dir = persist_directory or settings.CHROMA_PERSIST_DIRECTORY
+        self.client = chromadb.PersistentClient(path=persist_dir)
 
         # Create or get the collection for query cache
         self.collection = self.client.get_or_create_collection(

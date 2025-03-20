@@ -1,12 +1,15 @@
--- Consolidated schema_old.sql including all migrations
+-- Consolidated schema.sql including all migrations
 -- This represents the complete database structure as of March 2025
+
+-- Enable extensions first (must be done outside the main transaction)
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Start a transaction for the rest of the schema creation
+BEGIN;
 
 -- Create the eligibility schema
 CREATE SCHEMA IF NOT EXISTS eligibility;
-
--- Enable extensions
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Create organization table
 CREATE TABLE IF NOT EXISTS eligibility.organization (
@@ -138,15 +141,48 @@ CREATE TABLE IF NOT EXISTS eligibility.query_history (
 CREATE TABLE IF NOT EXISTS eligibility.query_cache (
     id SERIAL PRIMARY KEY,
     natural_query TEXT NOT NULL,
-    query_embedding VECTOR(1536),
     generated_sql TEXT NOT NULL,
     explanation TEXT,
     execution_count INTEGER DEFAULT 1,
     last_used TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     execution_time_ms FLOAT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    query_id TEXT
+    query_id TEXT,
+    CONSTRAINT unique_natural_query UNIQUE (natural_query)
 );
+
+-- Handle the vector column separately to ensure vector extension is available
+DO $$
+BEGIN
+    -- Check if vector extension exists and is installed
+    IF EXISTS (
+        SELECT 1 FROM pg_extension WHERE extname = 'vector'
+    ) THEN
+        -- Add vector column if not already present
+        IF NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'eligibility'
+            AND table_name = 'query_cache'
+            AND column_name = 'query_embedding'
+        ) THEN
+            ALTER TABLE eligibility.query_cache ADD COLUMN query_embedding VECTOR(1536);
+
+            -- Create vector index (this might fail if the vector extension isn't properly available)
+            BEGIN
+                EXECUTE 'CREATE INDEX IF NOT EXISTS idx_query_cache_embedding
+                ON eligibility.query_cache USING ivfflat (query_embedding vector_cosine_ops)
+                WITH (lists = 100)';
+                RAISE NOTICE 'Vector index created successfully';
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'Could not create vector index: %', SQLERRM;
+            END;
+        END IF;
+    ELSE
+        RAISE NOTICE 'Vector extension not available - skipping vector column creation';
+    END IF;
+END
+$$;
 
 -- Create query_id_mappings table
 CREATE TABLE IF NOT EXISTS eligibility.query_id_mappings (
@@ -183,7 +219,8 @@ WHERE
 WITH DATA;
 
 -- Create view for member details with verification status
-CREATE OR REPLACE VIEW eligibility.member_details AS
+DROP VIEW IF EXISTS eligibility.member_details;
+CREATE VIEW eligibility.member_details AS
 SELECT
     m.id,
     m.organization_id,
@@ -215,8 +252,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_active_verified_members_id ON eligibility.
 CREATE INDEX IF NOT EXISTS idx_query_history_timestamp ON eligibility.query_history (timestamp);
 CREATE INDEX IF NOT EXISTS idx_query_cache_natural ON eligibility.query_cache (natural_query);
 CREATE INDEX IF NOT EXISTS idx_query_cache_last_used ON eligibility.query_cache (last_used);
-CREATE INDEX IF NOT EXISTS idx_query_cache_embedding ON eligibility.query_cache USING ivfflat (query_embedding vector_cosine_ops) WITH (lists = 100);
 CREATE INDEX IF NOT EXISTS idx_member_name_dob ON eligibility.member (first_name, last_name, date_of_birth);
+CREATE INDEX IF NOT EXISTS idx_query_id_mappings_original_id ON eligibility.query_id_mappings (original_query_id);
 
 -- Full-text search indexes
 CREATE INDEX IF NOT EXISTS idx_member_name_trgm ON eligibility.member USING gin (
@@ -227,16 +264,24 @@ CREATE INDEX IF NOT EXISTS idx_member_email_trgm ON eligibility.member USING gin
 );
 
 -- Add schema metadata for better LLM understanding
-INSERT INTO eligibility.schema_metadata (table_name, column_name, description, example_value) VALUES
+-- Use ON CONFLICT DO NOTHING to prevent duplicate key errors
+INSERT INTO eligibility.schema_metadata (table_name, column_name, description, example_value)
+VALUES
 -- Core tables metadata
 ('organization', 'id', 'Primary key for organization', '1'),
-('organization', 'name', 'Name of the organization', 'ACME Corp'),
+('organization', 'name', 'Name of the organization', 'ACME Corp')
+ON CONFLICT (table_name, column_name) DO NOTHING;
 
+INSERT INTO eligibility.schema_metadata (table_name, column_name, description, example_value)
+VALUES
 ('file', 'id', 'Primary key for file', '1'),
 ('file', 'organization_id', 'Reference to organization', '1'),
 ('file', 'name', 'File name', 'employees_2023.csv'),
-('file', 'status', 'Processing status of the file', 'completed'),
+('file', 'status', 'Processing status of the file', 'completed')
+ON CONFLICT (table_name, column_name) DO NOTHING;
 
+INSERT INTO eligibility.schema_metadata (table_name, column_name, description, example_value)
+VALUES
 ('member', 'id', 'Primary key for member', '1'),
 ('member', 'organization_id', 'Reference to organization', '1'),
 ('member', 'file_id', 'Reference to file that created this record', '1'),
@@ -247,51 +292,90 @@ INSERT INTO eligibility.schema_metadata (table_name, column_name, description, e
 ('member', 'dependent_id', 'Dependent identifier, empty for primary members', 'DEP001'),
 ('member', 'date_of_birth', 'Date of birth', '1980-01-01'),
 ('member', 'work_state', 'State where member works', 'CA'),
-('member', 'effective_range', 'Date range when the member record is effective', '[2023-01-01,)'),
+('member', 'effective_range', 'Date range when the member record is effective', '[2023-01-01,)')
+ON CONFLICT (table_name, column_name) DO NOTHING;
 
+INSERT INTO eligibility.schema_metadata (table_name, column_name, description, example_value)
+VALUES
 ('verification', 'id', 'Primary key for verification', '1'),
 ('verification', 'member_id', 'Reference to member', '1'),
 ('verification', 'organization_id', 'Reference to organization', '1'),
 ('verification', 'verification_type', 'Type of verification', 'email'),
-('verification', 'verified_at', 'When verification was completed', '2023-01-15 14:30:00'),
+('verification', 'verified_at', 'When verification was completed', '2023-01-15 14:30:00')
+ON CONFLICT (table_name, column_name) DO NOTHING;
 
+INSERT INTO eligibility.schema_metadata (table_name, column_name, description, example_value)
+VALUES
 ('verification_attempt', 'id', 'Primary key for verification attempt', '1'),
 ('verification_attempt', 'verification_id', 'Reference to verification', '1'),
-('verification_attempt', 'successful_verification', 'Whether verification was successful', 'true'),
+('verification_attempt', 'successful_verification', 'Whether verification was successful', 'true')
+ON CONFLICT (table_name, column_name) DO NOTHING;
 
+INSERT INTO eligibility.schema_metadata (table_name, column_name, description, example_value)
+VALUES
 ('member_verification', 'id', 'Primary key for member verification', '1'),
 ('member_verification', 'member_id', 'Reference to member', '1'),
 ('member_verification', 'verification_id', 'Reference to verification', '1'),
-('member_verification', 'verification_attempt_id', 'Reference to verification attempt', '1'),
+('member_verification', 'verification_attempt_id', 'Reference to verification attempt', '1')
+ON CONFLICT (table_name, column_name) DO NOTHING;
+
 -- Add business concept metadata from migration 20250310_01_add_schema_metadata.sql
+INSERT INTO eligibility.schema_metadata (table_name, column_name, description, example_value)
+VALUES
 ('member', 'effective_range', 'Date range when a member is considered active. A member is active when CURRENT_DATE is contained within this range.', '[2023-01-01,)'),
-('active_members', NULL, 'View that contains only currently active members (where current date is within effective_range)', NULL),
+('active_members', NULL, 'View that contains only currently active members (where current date is within effective_range)', NULL)
+ON CONFLICT (table_name, column_name) DO NOTHING;
+
 -- Add overeligibility concept from migration ee218ec76260
-('member', '', 'A person is considered "overeligible" if they have active member records in more than one organization with the same first name, last name, and date of birth.', '');
+INSERT INTO eligibility.schema_metadata (table_name, column_name, description, example_value)
+VALUES
+('member', '', 'A person is considered "overeligible" if they have active member records in more than one organization with the same first name, last name, and date of birth.', '')
+ON CONFLICT (table_name, column_name) DO NOTHING;
 
 -- Add sample query templates
-INSERT INTO eligibility.query_templates (natural_language_pattern, sql_template, last_used, success_count) VALUES
+-- Use ON CONFLICT DO NOTHING for templates as well
+INSERT INTO eligibility.query_templates (natural_language_pattern, sql_template, last_used, success_count)
+VALUES
 ('Show me all members from {organization}',
  'SELECT * FROM eligibility.member WHERE organization_id = (SELECT id FROM eligibility.organization WHERE name ILIKE ''%{organization}%'')',
- CURRENT_TIMESTAMP, 1),
+ CURRENT_TIMESTAMP, 1)
+ON CONFLICT DO NOTHING;
 
+INSERT INTO eligibility.query_templates (natural_language_pattern, sql_template, last_used, success_count)
+VALUES
 ('Find members with email {email}',
  'SELECT * FROM eligibility.member WHERE email ILIKE ''%{email}%''',
- CURRENT_TIMESTAMP, 1),
+ CURRENT_TIMESTAMP, 1)
+ON CONFLICT DO NOTHING;
 
+INSERT INTO eligibility.query_templates (natural_language_pattern, sql_template, last_used, success_count)
+VALUES
 ('Show verification status for member {member_id}',
  'SELECT m.*, v.verification_type, v.verified_at FROM eligibility.member m LEFT JOIN eligibility.member_verification mv ON m.id = mv.member_id LEFT JOIN eligibility.verification v ON mv.verification_id = v.id WHERE m.id = {member_id}',
- CURRENT_TIMESTAMP, 1),
+ CURRENT_TIMESTAMP, 1)
+ON CONFLICT DO NOTHING;
 
 -- Add overeligibility query templates from migration ee218ec76260
+INSERT INTO eligibility.query_templates (natural_language_pattern, sql_template, last_used, success_count)
+VALUES
 ('Show me all overeligible members',
  'SELECT m.first_name, m.last_name, m.date_of_birth, COUNT(DISTINCT m.organization_id) as org_count, array_agg(DISTINCT o.name) as organizations FROM eligibility.member m JOIN eligibility.organization o ON m.organization_id = o.id WHERE m.effective_range @> CURRENT_DATE GROUP BY m.first_name, m.last_name, m.date_of_birth HAVING COUNT(DISTINCT m.organization_id) > 1',
- CURRENT_TIMESTAMP, 1),
+ CURRENT_TIMESTAMP, 1)
+ON CONFLICT DO NOTHING;
 
+INSERT INTO eligibility.query_templates (natural_language_pattern, sql_template, last_used, success_count)
+VALUES
 ('Is {first_name} {last_name} overeligible',
  'SELECT COUNT(DISTINCT organization_id) > 1 as is_overeligible FROM eligibility.member WHERE first_name ILIKE ''{first_name}'' AND last_name ILIKE ''{last_name}'' AND effective_range @> CURRENT_DATE',
- CURRENT_TIMESTAMP, 1),
+ CURRENT_TIMESTAMP, 1)
+ON CONFLICT DO NOTHING;
 
+INSERT INTO eligibility.query_templates (natural_language_pattern, sql_template, last_used, success_count)
+VALUES
 ('Check if member with ID {member_id} is overeligible',
  'WITH member_identity AS (SELECT first_name, last_name, date_of_birth FROM eligibility.member WHERE id = {member_id}) SELECT COUNT(DISTINCT m.organization_id) > 1 as is_overeligible FROM eligibility.member m JOIN member_identity mi ON m.first_name = mi.first_name AND m.last_name = mi.last_name AND m.date_of_birth = mi.date_of_birth WHERE m.effective_range @> CURRENT_DATE',
- CURRENT_TIMESTAMP, 1);
+ CURRENT_TIMESTAMP, 1)
+ON CONFLICT DO NOTHING;
+
+-- Commit the transaction
+COMMIT;

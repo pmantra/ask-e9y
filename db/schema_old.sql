@@ -1,15 +1,11 @@
--- Consolidated schema_old.sql including all migrations
--- This represents the complete database structure as of March 2025
-
 -- Create the eligibility schema
 CREATE SCHEMA IF NOT EXISTS eligibility;
 
--- Enable extensions
+-- Enable text search capabilities
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Create organization table
-CREATE TABLE IF NOT EXISTS eligibility.organization (
+CREATE TABLE eligibility.organization (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -17,7 +13,7 @@ CREATE TABLE IF NOT EXISTS eligibility.organization (
 );
 
 -- Create file table
-CREATE TABLE IF NOT EXISTS eligibility.file (
+CREATE TABLE eligibility.file (
     id SERIAL PRIMARY KEY,
     organization_id INTEGER NOT NULL,
     name TEXT NOT NULL,
@@ -28,7 +24,7 @@ CREATE TABLE IF NOT EXISTS eligibility.file (
 );
 
 -- Create member table
-CREATE TABLE IF NOT EXISTS eligibility.member (
+CREATE TABLE eligibility.member (
     id SERIAL PRIMARY KEY,
     organization_id INTEGER NOT NULL,
     file_id INTEGER,
@@ -47,7 +43,7 @@ CREATE TABLE IF NOT EXISTS eligibility.member (
 );
 
 -- Create verification table
-CREATE TABLE IF NOT EXISTS eligibility.verification (
+CREATE TABLE eligibility.verification (
     id SERIAL PRIMARY KEY,
     member_id INTEGER,  -- Can be NULL if verification is created before member record
     organization_id INTEGER NOT NULL,
@@ -69,7 +65,7 @@ CREATE TABLE IF NOT EXISTS eligibility.verification (
 );
 
 -- Create verification_attempt table
-CREATE TABLE IF NOT EXISTS eligibility.verification_attempt (
+CREATE TABLE eligibility.verification_attempt (
     id SERIAL PRIMARY KEY,
     verification_id INTEGER NOT NULL,
     organization_id INTEGER NOT NULL,
@@ -91,7 +87,7 @@ CREATE TABLE IF NOT EXISTS eligibility.verification_attempt (
 );
 
 -- Create member_verification join table
-CREATE TABLE IF NOT EXISTS eligibility.member_verification (
+CREATE TABLE eligibility.member_verification (
     id SERIAL PRIMARY KEY,
     member_id INTEGER NOT NULL,
     verification_id INTEGER NOT NULL,
@@ -104,7 +100,7 @@ CREATE TABLE IF NOT EXISTS eligibility.member_verification (
 );
 
 -- Create schema metadata table for chatbot
-CREATE TABLE IF NOT EXISTS eligibility.schema_metadata (
+CREATE TABLE eligibility.schema_metadata (
     table_name TEXT,
     column_name TEXT,
     description TEXT,
@@ -113,7 +109,7 @@ CREATE TABLE IF NOT EXISTS eligibility.schema_metadata (
 );
 
 -- Create query templates table for chatbot
-CREATE TABLE IF NOT EXISTS eligibility.query_templates (
+CREATE TABLE eligibility.query_templates (
     id SERIAL PRIMARY KEY,
     natural_language_pattern TEXT,
     sql_template TEXT,
@@ -121,42 +117,8 @@ CREATE TABLE IF NOT EXISTS eligibility.query_templates (
     success_count INTEGER DEFAULT 0
 );
 
--- Create query_history table (from migration 20250309_01_add_query_history_table.sql)
-CREATE TABLE IF NOT EXISTS eligibility.query_history (
-    id SERIAL PRIMARY KEY,
-    query_text TEXT NOT NULL,
-    generated_sql TEXT NOT NULL,
-    execution_success BOOLEAN NOT NULL,
-    execution_time_ms FLOAT,
-    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    user_feedback TEXT,
-    result_count INTEGER,
-    query_id TEXT
-);
-
--- Create query_cache table (from migration 20250312_01_add_query_cache_table.sql)
-CREATE TABLE IF NOT EXISTS eligibility.query_cache (
-    id SERIAL PRIMARY KEY,
-    natural_query TEXT NOT NULL,
-    query_embedding VECTOR(1536),
-    generated_sql TEXT NOT NULL,
-    explanation TEXT,
-    execution_count INTEGER DEFAULT 1,
-    last_used TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    execution_time_ms FLOAT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    query_id TEXT
-);
-
--- Create query_id_mappings table
-CREATE TABLE IF NOT EXISTS eligibility.query_id_mappings (
-    new_query_id TEXT PRIMARY KEY,
-    original_query_id TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Create materialized view for active verified members
-CREATE MATERIALIZED VIEW IF NOT EXISTS eligibility.active_verified_members AS
+CREATE MATERIALIZED VIEW eligibility.active_verified_members AS
 SELECT
     m.id,
     m.organization_id,
@@ -183,7 +145,7 @@ WHERE
 WITH DATA;
 
 -- Create view for member details with verification status
-CREATE OR REPLACE VIEW eligibility.member_details AS
+CREATE VIEW eligibility.member_details AS
 SELECT
     m.id,
     m.organization_id,
@@ -202,33 +164,27 @@ SELECT
 FROM
     eligibility.member m;
 
--- Create all required indexes
-CREATE INDEX IF NOT EXISTS idx_member_identity ON eligibility.member (organization_id, unique_corp_id, dependent_id);
-CREATE INDEX IF NOT EXISTS idx_member_name_email ON eligibility.member (organization_id, last_name, first_name, email);
-CREATE INDEX IF NOT EXISTS idx_verification_member_id ON eligibility.verification (member_id);
-CREATE INDEX IF NOT EXISTS idx_verification_organization_id ON eligibility.verification (organization_id);
-CREATE INDEX IF NOT EXISTS idx_verification_attempt_verification_id ON eligibility.verification_attempt (verification_id);
-CREATE INDEX IF NOT EXISTS idx_member_verification_member_id ON eligibility.member_verification (member_id);
-CREATE INDEX IF NOT EXISTS idx_member_verification_verification_id ON eligibility.member_verification (verification_id);
-CREATE INDEX IF NOT EXISTS idx_member_effective_range ON eligibility.member USING gist (effective_range);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_active_verified_members_id ON eligibility.active_verified_members (id);
-CREATE INDEX IF NOT EXISTS idx_query_history_timestamp ON eligibility.query_history (timestamp);
-CREATE INDEX IF NOT EXISTS idx_query_cache_natural ON eligibility.query_cache (natural_query);
-CREATE INDEX IF NOT EXISTS idx_query_cache_last_used ON eligibility.query_cache (last_used);
-CREATE INDEX IF NOT EXISTS idx_query_cache_embedding ON eligibility.query_cache USING ivfflat (query_embedding vector_cosine_ops) WITH (lists = 100);
-CREATE INDEX IF NOT EXISTS idx_member_name_dob ON eligibility.member (first_name, last_name, date_of_birth);
+-- Create indexes
+CREATE INDEX idx_member_identity ON eligibility.member (organization_id, unique_corp_id, dependent_id);
+CREATE INDEX idx_member_name_email ON eligibility.member (organization_id, last_name, first_name, email);
+CREATE INDEX idx_verification_member_id ON eligibility.verification (member_id);
+CREATE INDEX idx_verification_organization_id ON eligibility.verification (organization_id);
+CREATE INDEX idx_verification_attempt_verification_id ON eligibility.verification_attempt (verification_id);
+CREATE INDEX idx_member_verification_member_id ON eligibility.member_verification (member_id);
+CREATE INDEX idx_member_verification_verification_id ON eligibility.member_verification (verification_id);
+CREATE INDEX idx_member_effective_range ON eligibility.member USING gist (effective_range);
+CREATE UNIQUE INDEX idx_active_verified_members_id ON eligibility.active_verified_members (id);
 
 -- Full-text search indexes
-CREATE INDEX IF NOT EXISTS idx_member_name_trgm ON eligibility.member USING gin (
+CREATE INDEX idx_member_name_trgm ON eligibility.member USING gin (
     (first_name || ' ' || last_name) gin_trgm_ops
 );
-CREATE INDEX IF NOT EXISTS idx_member_email_trgm ON eligibility.member USING gin (
+CREATE INDEX idx_member_email_trgm ON eligibility.member USING gin (
     email gin_trgm_ops
 );
 
 -- Add schema metadata for better LLM understanding
 INSERT INTO eligibility.schema_metadata (table_name, column_name, description, example_value) VALUES
--- Core tables metadata
 ('organization', 'id', 'Primary key for organization', '1'),
 ('organization', 'name', 'Name of the organization', 'ACME Corp'),
 
@@ -262,12 +218,7 @@ INSERT INTO eligibility.schema_metadata (table_name, column_name, description, e
 ('member_verification', 'id', 'Primary key for member verification', '1'),
 ('member_verification', 'member_id', 'Reference to member', '1'),
 ('member_verification', 'verification_id', 'Reference to verification', '1'),
-('member_verification', 'verification_attempt_id', 'Reference to verification attempt', '1'),
--- Add business concept metadata from migration 20250310_01_add_schema_metadata.sql
-('member', 'effective_range', 'Date range when a member is considered active. A member is active when CURRENT_DATE is contained within this range.', '[2023-01-01,)'),
-('active_members', NULL, 'View that contains only currently active members (where current date is within effective_range)', NULL),
--- Add overeligibility concept from migration ee218ec76260
-('member', '', 'A person is considered "overeligible" if they have active member records in more than one organization with the same first name, last name, and date of birth.', '');
+('member_verification', 'verification_attempt_id', 'Reference to verification attempt', '1');
 
 -- Add sample query templates
 INSERT INTO eligibility.query_templates (natural_language_pattern, sql_template, last_used, success_count) VALUES
@@ -281,17 +232,4 @@ INSERT INTO eligibility.query_templates (natural_language_pattern, sql_template,
 
 ('Show verification status for member {member_id}',
  'SELECT m.*, v.verification_type, v.verified_at FROM eligibility.member m LEFT JOIN eligibility.member_verification mv ON m.id = mv.member_id LEFT JOIN eligibility.verification v ON mv.verification_id = v.id WHERE m.id = {member_id}',
- CURRENT_TIMESTAMP, 1),
-
--- Add overeligibility query templates from migration ee218ec76260
-('Show me all overeligible members',
- 'SELECT m.first_name, m.last_name, m.date_of_birth, COUNT(DISTINCT m.organization_id) as org_count, array_agg(DISTINCT o.name) as organizations FROM eligibility.member m JOIN eligibility.organization o ON m.organization_id = o.id WHERE m.effective_range @> CURRENT_DATE GROUP BY m.first_name, m.last_name, m.date_of_birth HAVING COUNT(DISTINCT m.organization_id) > 1',
- CURRENT_TIMESTAMP, 1),
-
-('Is {first_name} {last_name} overeligible',
- 'SELECT COUNT(DISTINCT organization_id) > 1 as is_overeligible FROM eligibility.member WHERE first_name ILIKE ''{first_name}'' AND last_name ILIKE ''{last_name}'' AND effective_range @> CURRENT_DATE',
- CURRENT_TIMESTAMP, 1),
-
-('Check if member with ID {member_id} is overeligible',
- 'WITH member_identity AS (SELECT first_name, last_name, date_of_birth FROM eligibility.member WHERE id = {member_id}) SELECT COUNT(DISTINCT m.organization_id) > 1 as is_overeligible FROM eligibility.member m JOIN member_identity mi ON m.first_name = mi.first_name AND m.last_name = mi.last_name AND m.date_of_birth = mi.date_of_birth WHERE m.effective_range @> CURRENT_DATE',
  CURRENT_TIMESTAMP, 1);

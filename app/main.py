@@ -59,7 +59,11 @@ JSONResponse.json_dumps = custom_json_serializer
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=[
+        "https://ask-e9y-o3of4kox2-prashanth-mantravadis-projects.vercel.app",
+        "http://localhost:3000",  # Local development
+        "*"  # Temporarily allow all origins for testing (remove in production)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

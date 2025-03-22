@@ -5,12 +5,11 @@ import json
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.encoders import jsonable_encoder
 
 from app import debug_endpoints
 from app.config import settings
 from app.database import get_async_db, test_connection, AsyncSession
-from app.routers import query
+from app.routers import query, metrics
 from app.utils.json_encoder import CustomJSONEncoder
 
 # Configure logging
@@ -72,6 +71,9 @@ app.add_middleware(
 # Include routers
 app.include_router(query.router)
 app.include_router(debug_endpoints.router)  # Add debug endpoints
+# Add the metrics router
+app.include_router(metrics.router)
+
 
 
 @app.get("/", tags=["Health"])

@@ -1,5 +1,6 @@
 from app.services.embedding_service import EmbeddingService
 from app.services.chroma_service import ChromaService
+from app.services.metrics_service import MetricsService
 from app.services.openai_llm import OpenAILLMService
 from app.services.cache_service import CacheService
 from app.services.sql_executor import SQLExecutor
@@ -25,6 +26,7 @@ def create_query_orchestrator():
     cache_service = CacheService(embedding_service, chroma_service)
     sql_executor = SQLExecutor()
     schema_service = SchemaService()
+    metrics_service = MetricsService()
 
     # Create stage services
     cache_lookup_stage = CacheLookupStage(cache_service)
@@ -41,9 +43,10 @@ def create_query_orchestrator():
         sql_validation_stage,
         sql_execution_stage,
         explanation_stage,
-        cache_storage_stage
+        cache_storage_stage,
+        explanation_service=None,  # Explicitly set to None
+        metrics_service=metrics_service  # Pass the metrics service
     )
-
 
 # Create a singleton instance
 query_orchestrator = create_query_orchestrator()

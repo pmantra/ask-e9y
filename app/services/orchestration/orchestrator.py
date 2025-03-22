@@ -21,7 +21,9 @@ class QueryOrchestrator:
             sql_execution_stage,
             explanation_stage,
             cache_storage_stage,
-            explanation_service=None  # Optional service for explanation endpoint
+            explanation_service=None,  # Optional service for explanation endpoint
+            metrics_service=None,
+
     ):
         self.cache_lookup_stage = cache_lookup_stage
         self.sql_generation_stage = sql_generation_stage
@@ -30,6 +32,7 @@ class QueryOrchestrator:
         self.explanation_stage = explanation_stage
         self.cache_storage_stage = cache_storage_stage
         self.explanation_service = explanation_service  # Store for get_explanation method
+        self.metrics_service = metrics_service
 
     async def process_query(
             self,
@@ -61,6 +64,20 @@ class QueryOrchestrator:
         try:
             # Process the query through all stages
             result = await self._execute_query_pipeline(context, db_session)
+
+            # Record metrics
+            await self.metrics_service.record_query_metrics(context, db_session)
+
+            # Include key metrics in response for debugging (optional)
+            if isinstance(result, QueryResponse) and hasattr(result, "timing_stats"):
+                if result.timing_stats is None:
+                    result.timing_stats = {}
+
+                token_usage = context.metadata.get("token_usage", {})
+                if token_usage:
+                    # Add each token metric individually
+                    for key, value in token_usage.items():
+                        result.timing_stats[f"token_{key}"] = float(value)
 
             # Log summary before returning
             summary = context.get_summary()

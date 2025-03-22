@@ -267,9 +267,8 @@ CREATE INDEX IF NOT EXISTS idx_member_email_trgm ON eligibility.member USING gin
 -- Use ON CONFLICT DO NOTHING to prevent duplicate key errors
 INSERT INTO eligibility.schema_metadata (table_name, column_name, description, example_value)
 VALUES
--- Core tables metadata
-('organization', 'id', 'Primary key for organization', '1'),
-('organization', 'name', 'Name of the organization', 'ACME Corp')
+('member', 'effective_range', 'Date range when a member is considered active. A member is active when CURRENT_DATE is contained within this range.', '[2023-01-01,)'),
+('active_members', '', 'View that contains only currently active members (where current date is within effective_range)', NULL)
 ON CONFLICT (table_name, column_name) DO NOTHING;
 
 INSERT INTO eligibility.schema_metadata (table_name, column_name, description, example_value)
@@ -323,7 +322,7 @@ ON CONFLICT (table_name, column_name) DO NOTHING;
 INSERT INTO eligibility.schema_metadata (table_name, column_name, description, example_value)
 VALUES
 ('member', 'effective_range', 'Date range when a member is considered active. A member is active when CURRENT_DATE is contained within this range.', '[2023-01-01,)'),
-('active_members', NULL, 'View that contains only currently active members (where current date is within effective_range)', NULL)
+('active_members', '', 'View that contains only currently active members (where current date is within effective_range)', NULL)
 ON CONFLICT (table_name, column_name) DO NOTHING;
 
 -- Add overeligibility concept from migration ee218ec76260
@@ -376,6 +375,25 @@ VALUES
  'WITH member_identity AS (SELECT first_name, last_name, date_of_birth FROM eligibility.member WHERE id = {member_id}) SELECT COUNT(DISTINCT m.organization_id) > 1 as is_overeligible FROM eligibility.member m JOIN member_identity mi ON m.first_name = mi.first_name AND m.last_name = mi.last_name AND m.date_of_birth = mi.date_of_birth WHERE m.effective_range @> CURRENT_DATE',
  CURRENT_TIMESTAMP, 1)
 ON CONFLICT DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS eligibility.api_metrics (
+    id SERIAL PRIMARY KEY,
+    query_id TEXT NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    original_query TEXT NOT NULL,
+    cache_status TEXT,
+    execution_time_ms FLOAT,
+    total_time_ms FLOAT,
+    row_count INTEGER,
+    schema_size INTEGER,
+    token_usage JSONB,
+    stage_timings JSONB,
+    success BOOLEAN,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_metrics_query_id ON eligibility.api_metrics (query_id);
+CREATE INDEX IF NOT EXISTS idx_api_metrics_timestamp ON eligibility.api_metrics (timestamp);
 
 -- Commit the transaction
 COMMIT;

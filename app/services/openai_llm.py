@@ -72,6 +72,14 @@ class OpenAILLMService(LLMService):
             api_duration = time.time() - start_time
             logger.info(f"OpenAI API call for SQL translation took {api_duration:.2f} seconds")
 
+            # Extract and log token usage
+            token_usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens
+            }
+            logger.info(f"Token usage: {token_usage}")
+
             sql = response.choices[0].message.content.strip()
 
             # Clean up the SQL (remove markdown formatting if present)
@@ -80,7 +88,7 @@ class OpenAILLMService(LLMService):
             # Generate explanation of the SQL
             explanation = await self._generate_explanation(query, sql)
 
-            return sql, explanation
+            return sql, explanation, token_usage  # Return token usage
 
         except Exception as e:
             api_duration = time.time() - start_time

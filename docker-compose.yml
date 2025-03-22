@@ -18,7 +18,7 @@ services:
       - ./alembic.ini:/app/alembic.ini
       - chroma_data:/app/chroma_db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
       timeout: 5s
       retries: 5

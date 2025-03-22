@@ -21,8 +21,11 @@ class SQLGenerationStage:
         # Get schema information
         schema_info = await self.schema_service.get_schema_info()
 
+        # Store schema size in context
+        context.metadata["full_schema_size"] = len(schema_info)
+
         # Generate SQL
-        sql, explanation = await self.llm_service.translate_to_sql(
+        sql, explanation, token_usage = await self.llm_service.translate_to_sql(
             context.enhanced_query or context.original_query,
             schema_info,
             context.conversation_id
@@ -31,6 +34,7 @@ class SQLGenerationStage:
         # Update context
         context.sql = sql
         context.metadata["sql_explanation"] = explanation
+        context.metadata["token_usage"] = token_usage
 
         logger.info(f"Generated SQL: {sql}")
 

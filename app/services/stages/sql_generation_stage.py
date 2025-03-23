@@ -10,6 +10,7 @@ class SQLGenerationStage:
         self.llm_service = llm_service
         self.schema_service = schema_service
 
+    # In app/services/stages/sql_generation_stage.py
     async def execute(self, context, db_session):
         """Execute the SQL generation stage."""
         # Skip if we already have SQL from cache
@@ -25,7 +26,7 @@ class SQLGenerationStage:
         context.metadata["full_schema_size"] = len(schema_info)
 
         # Generate SQL
-        sql, explanation, token_usage = await self.llm_service.translate_to_sql(
+        sql, explanation, token_usage, prompts = await self.llm_service.translate_to_sql(
             context.enhanced_query or context.original_query,
             schema_info,
             context.conversation_id
@@ -35,6 +36,13 @@ class SQLGenerationStage:
         context.sql = sql
         context.metadata["sql_explanation"] = explanation
         context.metadata["token_usage"] = token_usage
+
+        # Store prompts in context metadata
+        context.metadata["prompt_system"] = prompts["system"]
+        context.metadata["prompt_user"] = prompts["user"]
+
+        logger.debug(
+            f"Stored prompts in context: system={len(prompts['system'])} chars, user={len(prompts['user'])} chars")
 
         logger.info(f"Generated SQL: {sql}")
 

@@ -126,3 +126,35 @@ async def get_metrics_summary(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching metrics: {str(e)}")
+
+    # In app/routers/metrics.py
+@router.get("/prompts/{query_id}")
+async def get_prompt_details(
+        query_id: str,
+        db: AsyncSession = Depends(get_async_db)
+):
+    """Get the full prompt details for a specific query."""
+    try:
+        query = text("""
+            SELECT 
+                query_id,
+                original_query,
+                prompt_system,
+                prompt_user,
+                token_usage,
+                schema_size
+            FROM
+                eligibility.api_metrics
+            WHERE
+                query_id = :query_id
+        """)
+
+        result = await db.execute(query, {"query_id": query_id})
+        prompt_data = result.mappings().first()
+
+        if not prompt_data:
+            raise HTTPException(status_code=404, detail="Query not found")
+
+        return dict(prompt_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching prompt: {str(e)}")

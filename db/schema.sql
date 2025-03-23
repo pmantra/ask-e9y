@@ -381,6 +381,8 @@ CREATE TABLE IF NOT EXISTS eligibility.api_metrics (
     query_id TEXT NOT NULL,
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
     original_query TEXT NOT NULL,
+    prompt_system TEXT,
+    prompt_user TEXT,
     cache_status TEXT,
     execution_time_ms FLOAT,
     total_time_ms FLOAT,

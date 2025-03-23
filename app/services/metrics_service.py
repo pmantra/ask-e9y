@@ -25,6 +25,8 @@ class MetricsService:
             "query_id": str(context.query_id),
             "timestamp": datetime.now(),
             "original_query": context.original_query,
+            "prompt_system": context.metadata.get("prompt_system", ""),
+            "prompt_user": context.metadata.get("prompt_user", ""),
             "cache_status": context.metadata.get("cache_status", "miss"),
             "execution_time_ms": context.metadata.get("execution_time_ms", 0),
             "total_time_ms": (time.time() - context.start_time) * 1000,
@@ -68,32 +70,40 @@ class MetricsService:
         except Exception as e:
             logger.error(f"Error storing metrics in file: {str(e)}")
 
+    # In app/services/metrics_service.py
     async def _store_metrics_in_db(self, metrics, db_session):
         """Store metrics in the database."""
         try:
-            # Create the metrics table if it doesn't exist
-            await self._ensure_metrics_table(db_session)
-
             # Insert metrics record
             query = text("""
                 INSERT INTO eligibility.api_metrics (
                     query_id, timestamp, original_query, cache_status,
                     execution_time_ms, total_time_ms, row_count, 
-                    schema_size, token_usage, stage_timings, success
+                    schema_size, token_usage, stage_timings, success,
+                    prompt_system, prompt_user
                 ) VALUES (
                     :query_id, :timestamp, :original_query, :cache_status,
                     :execution_time_ms, :total_time_ms, :row_count,
-                    :schema_size, :token_usage, :stage_timings, :success
+                    :schema_size, :token_usage, :stage_timings, :success,
+                    :prompt_system, :prompt_user
                 )
             """)
+
+            # Log prompt sizes
+            system_prompt = metrics.get("prompt_system", "")
+            user_prompt = metrics.get("prompt_user", "")
+            logger.debug(
+                f"Storing metrics with prompt: system={len(system_prompt)} chars, user={len(user_prompt)} chars")
 
             # Convert complex objects to JSON strings
             metrics_db = metrics.copy()
             metrics_db["token_usage"] = json.dumps(metrics.get("token_usage", {}))
             metrics_db["stage_timings"] = json.dumps(metrics.get("stage_timings", {}))
 
+            # Execute the query
             await db_session.execute(query, metrics_db)
             await db_session.commit()
+            logger.debug(f"Stored metrics for query {metrics['query_id']}")
         except Exception as e:
             logger.error(f"Error storing metrics in database: {str(e)}")
 

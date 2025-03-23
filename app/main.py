@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from app import debug_endpoints
 from app.config import settings
 from app.database import get_async_db, test_connection, AsyncSession
-from app.routers import query, metrics
+from app.routers import query, metrics, analysis
 from app.utils.json_encoder import CustomJSONEncoder
 
 # Configure logging
@@ -73,6 +73,7 @@ app.include_router(query.router)
 app.include_router(debug_endpoints.router)  # Add debug endpoints
 # Add the metrics router
 app.include_router(metrics.router)
+app.include_router(analysis.router)
 
 
 

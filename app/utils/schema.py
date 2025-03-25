@@ -57,8 +57,7 @@ async def get_foreign_keys(session: AsyncSession, table_name: str, schema: str) 
     """Get foreign key information for a table."""
     query = text(
         """
-        SELECT
-            tc.constraint_name,
+        SELECT DISTINCT
             kcu.column_name,
             ccu.table_name AS foreign_table_name,
             ccu.column_name AS foreign_column_name
@@ -78,15 +77,26 @@ async def get_foreign_keys(session: AsyncSession, table_name: str, schema: str) 
     )
     result = await session.execute(query, {"schema": schema, "table_name": table_name})
 
-    foreign_keys = []
+    # First collect all the foreign keys
+    all_foreign_keys = []
     for row in result.fetchall():
-        foreign_keys.append({
-            "column": row[1],
-            "foreign_table": row[2],
-            "foreign_column": row[3],
+        all_foreign_keys.append({
+            "column": row[0],
+            "foreign_table": row[1],
+            "foreign_column": row[2],
         })
 
-    return foreign_keys
+    # Deduplicate by creating a unique set of tuples
+    unique_fk_tuples = set()
+    deduplicated_foreign_keys = []
+
+    for fk in all_foreign_keys:
+        fk_tuple = (fk["column"], fk["foreign_table"], fk["foreign_column"])
+        if fk_tuple not in unique_fk_tuples:
+            unique_fk_tuples.add(fk_tuple)
+            deduplicated_foreign_keys.append(fk)
+
+    return deduplicated_foreign_keys
 
 
 async def get_table_schema_info_with_session(session: AsyncSession, schema: str) -> Dict[str, Any]:

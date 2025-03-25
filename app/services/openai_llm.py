@@ -24,16 +24,25 @@ class OpenAILLMService(LLMService):
         self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         self.model = settings.OPENAI_MODEL
 
-    # In app/services/openai_llm.py
     async def translate_to_sql(
             self,
             query: str,
             schema_info: Dict[str, Any],
             conversation_id: Optional[UUID] = None,
+            similar_examples: Optional[List[Dict[str, Any]]] = None,
     ) -> Tuple[str, str, Dict[str, int], Dict[str, str]]:
         """Translate a natural language query to SQL using OpenAI."""
         # Prepare schema information as a string for the prompt
         schema_str = self._format_schema_for_prompt(schema_info)
+
+        # Prepare examples section if examples are provided
+        examples_str = ""
+        if similar_examples and len(similar_examples) > 0:
+            examples_str = "Here are examples of similar queries:\n\n"
+            for i, example in enumerate(similar_examples):
+                examples_str += f"Example {i + 1}:\n"
+                examples_str += f"Query: {example['natural_query']}\n"
+                examples_str += f"SQL: {example['generated_sql']}\n\n"
 
         # Create the system prompt
         system_prompt = f"""You are an expert SQL assistant that generates PostgreSQL SQL queries.
@@ -42,6 +51,8 @@ class OpenAILLMService(LLMService):
         Here's the database schema you're working with:
         {schema_str}
 
+        {examples_str}  
+
         Important concepts to understand about this schema:
         1. A member is considered "active" if the current date is contained within their effective_range. Use the PostgreSQL operator '@>' to check this: WHERE effective_range @> CURRENT_DATE
         2. Organizations are identified by the organization table, with a name column that can be searched using ILIKE.
@@ -49,6 +60,11 @@ class OpenAILLMService(LLMService):
         4. Never use a 'status' column for members as it doesn't exist. Always use the effective_range to determine if a member is active.
         5. For date operations, use PostgreSQL date functions like CURRENT_DATE.
         6. A person is considered "overeligible" if they have active member records in more than one organization with the same first name, last name, and date of birth. To check for overeligibility, look for members with identical first_name, last_name, and date_of_birth values that exist in multiple organizations.
+        
+        Important patterns for matching text:
+        1. Always use wildcards with ILIKE for name matching: ILIKE '%name%' not ILIKE 'name'
+        2. For first/last names, use: first_name ILIKE '%james%' to match any name containing 'james'
+        3. For organization names, use: name ILIKE '%acme%' to match any name containing 'acme'
 
         Generate ONLY SQL queries that query data, specifically SELECT statements. Do not generate queries that modify data.
         Ensure your SQL is valid PostgreSQL syntax.
@@ -407,10 +423,26 @@ Please help debug this error.
                 elif table_name == "organization" and column["name"] == "name":
                     schema_str += "    NOTE: This column contains the organization name, such as 'ACME Corporation' or 'Wayne Enterprises'.\n"
 
+            # Deduplicate foreign keys before formatting
             if "foreign_keys" in table_info and table_info["foreign_keys"]:
-                schema_str += "Foreign Keys:\n"
+                # Use a set to track unique foreign key relationships
+                unique_fks = set()
+                deduplicated_fks = []
+
                 for fk in table_info["foreign_keys"]:
-                    schema_str += f"  - {fk['column']} references eligibility.{fk['foreign_table']}({fk['foreign_column']})\n"
+                    # Create a unique key for this foreign key relationship
+                    fk_key = (fk['column'], fk['foreign_table'], fk['foreign_column'])
+
+                    # Only add if we haven't seen this relationship before
+                    if fk_key not in unique_fks:
+                        unique_fks.add(fk_key)
+                        deduplicated_fks.append(fk)
+
+                # Only add the Foreign Keys section if we have unique relationships
+                if deduplicated_fks:
+                    schema_str += "Foreign Keys:\n"
+                    for fk in deduplicated_fks:
+                        schema_str += f"  - {fk['column']} references eligibility.{fk['foreign_table']}({fk['foreign_column']})\n"
 
             schema_str += "\n"
 

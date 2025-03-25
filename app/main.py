@@ -2,6 +2,8 @@
 
 import logging
 import json
+from uuid import UUID
+
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -11,6 +13,8 @@ from app.config import settings
 from app.database import get_async_db, test_connection, AsyncSession
 from app.routers import query, metrics, analysis
 from app.utils.json_encoder import CustomJSONEncoder
+from app.utils.schema_embeddings_init import initialize_schema_embeddings
+
 
 # Configure logging
 logging.basicConfig(
@@ -28,6 +32,22 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
+
+# Add startup event handler
+@app.on_event("startup")
+async def startup_db_client():
+    """Initialize services on startup."""
+    # Initialize schema embeddings
+    if settings.INITIALIZE_EMBEDDINGS:
+        success = await initialize_schema_embeddings()
+        logger.info(f"Schema embeddings initialization: {'Success' if success else 'Failed'}")
+
+    # Seed example queries
+    if settings.SEED_EXAMPLE_QUERIES:
+        from app.utils.seed_example_queries import seed_example_queries
+        success = await seed_example_queries()
+        logger.info(f"Example queries seeding: {'Success' if success else 'Failed'}")
+
 
 # Custom exception handler for HTTPExceptions
 @app.exception_handler(HTTPException)

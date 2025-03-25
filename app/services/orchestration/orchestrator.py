@@ -23,6 +23,7 @@ class QueryOrchestrator:
             cache_storage_stage,
             explanation_service=None,  # Optional service for explanation endpoint
             metrics_service=None,
+            schema_embedding_service=None  # Schema embedding service for table similarity search
 
     ):
         self.cache_lookup_stage = cache_lookup_stage
@@ -33,6 +34,23 @@ class QueryOrchestrator:
         self.cache_storage_stage = cache_storage_stage
         self.explanation_service = explanation_service  # Store for get_explanation method
         self.metrics_service = metrics_service
+        self.schema_embedding_service = schema_embedding_service
+        
+        # Store services by name for easier access
+        self._services = {
+            "cache_service": getattr(self.cache_lookup_stage, "cache_service", None),
+            "embedding_service": getattr(self.cache_storage_stage, "embedding_service", None),
+            "llm_service": getattr(self.sql_generation_stage, "llm_service", None),
+            "schema_service": getattr(self.sql_generation_stage, "schema_service", None),
+            "sql_executor": getattr(self.sql_execution_stage, "sql_executor", None),
+            "metrics_service": self.metrics_service,
+            "explanation_service": self.explanation_service,
+            "schema_embedding_service": self.schema_embedding_service
+        }
+    
+    def _get_service(self, service_name: str) -> Any:
+        """Get a service by name."""
+        return self._services.get(service_name)
 
     async def process_query(
             self,

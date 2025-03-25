@@ -1,7 +1,7 @@
 # app/services/metrics_service.py
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, date
 import json
 import os
 from typing import Any
@@ -64,11 +64,25 @@ class MetricsService:
     def _store_metrics_in_file(self, metrics):
         """Store metrics in a local JSON file."""
         try:
+            # Convert datetime objects to strings
+            serializable_metrics = self._make_json_serializable(metrics)
+
             filename = f"{self.metrics_directory}/metrics_{datetime.now().strftime('%Y%m%d')}.jsonl"
             with open(filename, "a") as f:
-                f.write(json.dumps(metrics) + "\n")
+                f.write(json.dumps(serializable_metrics) + "\n")
         except Exception as e:
             logger.error(f"Error storing metrics in file: {str(e)}")
+
+    def _make_json_serializable(self, obj):
+        """Make an object JSON serializable by converting datetime objects to strings."""
+        if isinstance(obj, dict):
+            return {k: self._make_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._make_json_serializable(item) for item in obj]
+        elif isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        else:
+            return obj
 
     # In app/services/metrics_service.py
     async def _store_metrics_in_db(self, metrics, db_session):

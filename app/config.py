@@ -48,5 +48,8 @@ class Settings(BaseSettings):
 
     # ChromaDB Settings
     CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
+    # app/config.py - Add to Settings class
+    INITIALIZE_EMBEDDINGS: bool = os.getenv("INITIALIZE_EMBEDDINGS", "True").lower() in ("true", "1", "t")
+    SEED_EXAMPLE_QUERIES: bool = os.getenv("SEED_EXAMPLE_QUERIES", "True").lower() in ("true", "1", "t")
 
 settings = Settings()

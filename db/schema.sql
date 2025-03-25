@@ -1,3 +1,11 @@
+/*
+   WARNING: This is a reference schema only! 
+   Do NOT apply this directly to a production database.
+   Use Alembic migrations for schema changes:
+   ./scripts/apply_local_alembic_migrations.sh (for local)
+   ./scripts/apply_railway_alembic_migrations.sh (for Railways)
+*/
+
 -- Consolidated schema.sql including all migrations
 -- This represents the complete database structure as of March 2025
 

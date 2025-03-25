@@ -1,1 +1,74 @@
-Generic single-database configuration.
+# Alembic Migrations for Ask E9Y
+
+This directory contains database migration files using Alembic.
+
+## Migration Workflow
+
+### Running Migrations Locally
+
+1. Ensure you have alembic installed: `pip install alembic`
+
+2. Run all migrations sequentially:
+   ```bash
+   alembic upgrade head
+   ```
+
+3. Or run to a specific migration:
+   ```bash
+   alembic upgrade <revision_id>
+   ```
+
+4. Check current migration status:
+   ```bash
+   alembic current
+   ```
+
+5. View migration history:
+   ```bash
+   alembic history
+   ```
+
+### Running Migrations on Railways
+
+1. Using Railways CLI:
+   ```bash
+   # Connect to Railway PostgreSQL
+   railway connect postgresql
+   
+   # In PostgreSQL client, run:
+   \c ask_e9y_db
+   
+   # Confirm schema exists
+   \dn
+   
+   # Apply migrations (if Alembic metadata is already set up)
+   \i /tmp/alembic_upgrade.sql
+   ```
+
+2. Alternative method (if you can't use Alembic directly):
+   ```bash
+   # Create a script with the SQL commands from each migration
+   # Upload the script to the Railways server
+   railway run "psql -f /path/to/migrations.sql"
+   ```
+
+### Creating New Migrations
+
+1. Create a new migration:
+   ```bash
+   alembic revision -m "description_of_changes"
+   ```
+
+2. Edit the generated file in `alembic/versions/`
+
+3. For safety, make your migrations idempotent (safe to run multiple times)
+
+## Migration Sequence
+
+Current migration sequence:
+1. 7494a737b210_add_query_cache_table.py
+2. ee218ec76260_add_overeligibility_query.py
+3. e008f89c640d_add_query_id_column.py
+4. 690d444fe8dc_create_query_id_mappings_table.py
+5. 1c2def96078e_create_api_metrics_table.py
+6. a0792c896380_add_prompt_columns_to_api_metrics.py

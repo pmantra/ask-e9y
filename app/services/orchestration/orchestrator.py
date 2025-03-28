@@ -21,6 +21,7 @@ class QueryOrchestrator:
             sql_execution_stage,
             explanation_stage,
             cache_storage_stage,
+            prompt_analysis_stage,
             explanation_service=None,  # Optional service for explanation endpoint
             metrics_service=None,
             schema_embedding_service=None  # Schema embedding service for table similarity search
@@ -32,6 +33,7 @@ class QueryOrchestrator:
         self.sql_execution_stage = sql_execution_stage
         self.explanation_stage = explanation_stage
         self.cache_storage_stage = cache_storage_stage
+        self.prompt_analysis_stage = prompt_analysis_stage
         self.explanation_service = explanation_service  # Store for get_explanation method
         self.metrics_service = metrics_service
         self.schema_embedding_service = schema_embedding_service
@@ -45,7 +47,8 @@ class QueryOrchestrator:
             "sql_executor": getattr(self.sql_execution_stage, "sql_executor", None),
             "metrics_service": self.metrics_service,
             "explanation_service": self.explanation_service,
-            "schema_embedding_service": self.schema_embedding_service
+            "schema_embedding_service": self.schema_embedding_service,
+            "prompt_analysis_stage": self.prompt_analysis_stage
         }
     
     def _get_service(self, service_name: str) -> Any:

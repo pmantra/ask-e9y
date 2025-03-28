@@ -30,7 +30,7 @@ AND m.effective_range @> CURRENT_DATE
 SELECT m.* 
 FROM eligibility.member m
 JOIN eligibility.organization o ON m.organization_id = o.id
-WHERE o.name ILIKE '%Wayne Enterprises%'
+WHERE o.name ILIKE '%Wayne%'
 AND m.effective_range @> CURRENT_DATE
         """,
         "explanation": "This query retrieves all data for active members belonging to Wayne Enterprises. Active members are those where the current date is within their effective_range.",
@@ -147,7 +147,21 @@ AND m.effective_range @> CURRENT_DATE
         "tables": ["member"],
         "business_concepts": ["member_identification", "active_status"],
         "query_type": "direct_lookup"
-    }
+    },
+    {
+    "id": "example_emails_partial_org_match",
+    "natural_query": "Find emails from Stark Industries",
+    "generated_sql": """
+SELECT email 
+FROM eligibility.member m
+JOIN eligibility.organization o ON m.organization_id = o.id
+WHERE o.name ILIKE '%stark%'
+    """,
+    "explanation": "This query retrieves email addresses for members belonging to any organization with 'Stark' in the name. Note that we use just the key distinctive part of the organization name for broader matching.",
+    "tables": ["member", "organization"],
+    "business_concepts": ["organization_filtering", "partial_name_matching"],
+    "query_type": "retrieval"
+},
 ]
 
 

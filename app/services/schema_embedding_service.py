@@ -2,6 +2,7 @@
 
 import logging
 import time
+import re
 from typing import Dict, List, Any, Optional, Tuple
 
 from app.services.embedding_service import EmbeddingService
@@ -227,6 +228,12 @@ class SchemaEmbeddingService:
                 logger.warning("Could not load embeddings, falling back to empty result")
                 return []
 
+        # Direct pattern matching pre-check
+        direct_matches = self._direct_pattern_match(query)
+        if direct_matches:
+            logger.info(f"Found direct pattern matches: {', '.join(table for table, _ in direct_matches)}")
+            return direct_matches
+        
         # Generate embedding for the query
         query_embedding = await self.embedding_service.get_embedding(query)
         if not query_embedding:
@@ -248,6 +255,8 @@ class SchemaEmbeddingService:
             # Member-related terms
             "member": ["member"],
             "members": ["member"],
+             "email": ["member"],  
+            "emails": ["member"],
             "eligibility": ["member"],  # Eligibility records are in member table
             "eligible": ["member"],
             "records": ["member"],  # Often refers to member records
@@ -442,3 +451,52 @@ class SchemaEmbeddingService:
         # Remove extra whitespace, lowercase
         normalized = " ".join(query.lower().split())
         return normalized
+
+    def _direct_pattern_match(self, query: str) -> List[Tuple[str, float]]:
+        """Use direct pattern matching to find relevant tables."""
+        query_lower = query.lower()
+        matches = []
+        
+        # Define direct mapping patterns
+        patterns = {
+            # Table-specific patterns with high confidence scores
+            "member": [
+                (r"\bemail", 0.95),               # Any mention of email
+                (r"\bname", 0.85),                # Any mention of name
+                (r"\bmember", 0.95),              # Direct mention
+                (r"find .{0,20}\bpeople", 0.85),  # Finding people
+                (r"show .{0,20}\buser", 0.85),    # Showing users
+            ],
+            "organization": [
+                (r"\bcompany", 0.95),             # Company mentions
+                (r"\bcorp", 0.95),                # Corp mentions
+                (r"\borganization", 0.95),        # Direct mention
+                (r"\bindustries", 0.90),          # Industries suffix
+                (r"\benterprise", 0.90),          # Enterprise mentions
+            ],
+            "verification": [
+                (r"\bverif", 0.95),               # verification/verified
+                (r"\benroll", 0.95),              # enrollment/enrolled
+                (r"\bvalid", 0.90),               # validation/validated
+            ],
+        }
+        
+        # Check each pattern for matches
+        for table, table_patterns in patterns.items():
+            for pattern, confidence in table_patterns:
+                if re.search(pattern, query_lower):
+                    matches.append((table, confidence))
+                    # Don't break, collect all matches
+        
+        # Add common combinations
+        if any(table == "organization" for table, _ in matches) and "email" in query_lower:
+            if not any(table == "member" for table, _ in matches):
+                matches.append(("member", 0.9))  # If asking about org + email, include member
+        
+        # Return unique tables with highest confidence
+        unique_matches = {}
+        for table, confidence in matches:
+            if table not in unique_matches or confidence > unique_matches[table]:
+                unique_matches[table] = confidence
+        
+        return [(table, conf) for table, conf in unique_matches.items()]

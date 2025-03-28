@@ -16,6 +16,11 @@ class CacheStorageStage:
         if context.metadata.get("cache_status", "miss") != "miss":
             return {"stored": False, "skipped": True}
 
+        # Skip if query returned no results
+        if not context.metadata.get("has_results", False):
+            logger.info("Skipping cache storage for query with no results")
+            return {"stored": False, "skipped": True, "reason": "empty_results"}
+
         context.start_stage("cache_storage")
 
         # Get or reuse embedding

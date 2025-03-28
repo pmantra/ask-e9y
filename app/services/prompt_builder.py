@@ -55,8 +55,10 @@ Important patterns for matching text:
 3. For organization names, use: name ILIKE '%acme%' to match any name containing 'acme'
 """,
 "eligibility_records": """
-Important: The term "eligibility records" always refers to member records. To find active eligibility records,
-always use the member table with the effective_range condition: WHERE effective_range @> CURRENT_DATE
+Important: In this system, the term "eligibility records" always refers to member records.
+When querying for eligibility records, use the member table and check effective_range for active status:
+member.effective_range @> CURRENT_DATE
+Do not use verification records to represent eligibility unless the query specifically asks for verification.
 """,
         }
 

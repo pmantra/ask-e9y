@@ -177,6 +177,21 @@ AND m.effective_range @> CURRENT_DATE
     "business_concepts": ["active_status", "organization_filtering"],
     "query_type": "count_aggregate"
 },
+{
+    "id": "example_active_eligibility_records",
+    "natural_query": "How many eligibility records does Acme Corp have that are active?",
+    "generated_sql": """
+SELECT COUNT(*) as active_eligibility_count 
+FROM eligibility.member m
+JOIN eligibility.organization o ON m.organization_id = o.id
+WHERE o.name ILIKE '%Acme%'
+AND m.effective_range @> CURRENT_DATE
+    """,
+    "explanation": "This query counts active member records (eligibility records) for Acme Corp. In our system, 'eligibility records' refers to member records, and 'active' means the current date is within the member's effective_range.",
+    "tables": ["member", "organization"],
+    "business_concepts": ["active_status", "organization_filtering"],
+    "query_type": "count_aggregate"
+},
 ]
 
 

@@ -465,7 +465,8 @@ class SchemaEmbeddingService:
                 (r"\bname", 0.85),                # Any mention of name
                 (r"\bmember", 0.95),              # Direct mention
                 (r"find .{0,20}\bpeople", 0.85),  # Finding people
-                (r"show .{0,20}\buser", 0.85),    # Showing users
+                (r"show .{0,20}\buser", 0.85), 
+                (r"eligibility records", 0.95)    # Direct match for "eligibility records"
             ],
             "organization": [
                 (r"\bcompany", 0.95),             # Company mentions
@@ -477,7 +478,7 @@ class SchemaEmbeddingService:
             "verification": [
                 (r"\bverif", 0.95),               # verification/verified
                 (r"\benroll", 0.95),              # enrollment/enrolled
-                (r"\bvalid", 0.90),               # validation/validated
+                (r"\associa", 0.90),            # association/associated
             ],
         }
         

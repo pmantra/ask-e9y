@@ -53,7 +53,11 @@ Important patterns for matching text:
 1. Always use wildcards with ILIKE for name matching: ILIKE '%name%' not ILIKE 'name'
 2. For first/last names, use: first_name ILIKE '%james%' to match any name containing 'james'
 3. For organization names, use: name ILIKE '%acme%' to match any name containing 'acme'
-"""
+""",
+"eligibility_records": """
+Important: The term "eligibility records" always refers to member records. To find active eligibility records,
+always use the member table with the effective_range condition: WHERE effective_range @> CURRENT_DATE
+""",
         }
 
     def analyze_query(self, query: str) -> Dict[str, Any]:

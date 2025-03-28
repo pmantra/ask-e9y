@@ -162,6 +162,21 @@ WHERE o.name ILIKE '%stark%'
     "business_concepts": ["organization_filtering", "partial_name_matching"],
     "query_type": "retrieval"
 },
+{
+    "id": "example_eligibility_records",
+    "natural_query": "How many eligibility records does Wayne Enterprises have?",
+    "generated_sql": """
+SELECT COUNT(*) as active_eligibility_count 
+FROM eligibility.member m
+JOIN eligibility.organization o ON m.organization_id = o.id
+WHERE o.name ILIKE '%Wayne%'
+AND m.effective_range @> CURRENT_DATE
+    """,
+    "explanation": "This query counts active member records (eligibility records) for Wayne Enterprises. A member record is considered active when the current date falls within their effective_range.",
+    "tables": ["member", "organization"],
+    "business_concepts": ["active_status", "organization_filtering"],
+    "query_type": "count_aggregate"
+},
 ]
 
 
